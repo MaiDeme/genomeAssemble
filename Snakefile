@@ -1,0 +1,116 @@
+configfile: "config.yaml"
+
+WORKING_DIR = config["working_dir"]
+
+SAMPLES = config["samples"]
+
+SAMPLES_DIR = config["samples_dir"]
+BASECALL_DIR = config["basecall_dir"]
+BIN_DIR = config["bin_dir"]
+CORRECT_DIR = config["correct_dir"]
+ASSEMBLY_DIR = config["assembly_dir"]
+
+rule all:
+    input:
+        expand(f"{BASECALL_DIR}/{{sample}}/corrected/herro/reads.fasta", sample=SAMPLES),
+        expand(f"{BASECALL_DIR}/{{sample}}/corrected/herro/summary.txt", sample=SAMPLES)
+
+
+#########################################################
+################# Basecalling ###########################
+#########################################################
+
+rule dorado_basecalling:
+    message: "Basecalling with dorado"
+    input:
+        pod5 = f"{SAMPLES_DIR}/{{sample}}/pod5/"
+    output: 
+        reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+
+    shell: 
+        """
+        dorado basecaller sup {input.pod5} > {output.reads} --device cuda:0 --emit-fastq
+        """ 
+
+#########################################################
+################# Nanoplot ##############################
+#########################################################
+
+
+rule nanoplot:
+    message: "Generating graph with Nanoplot"
+    input:
+        reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq"
+    shell:
+        """
+        NanoPlot --fastq {input.reads} -o {BASECALL_DIR}/{{sample}}
+        """
+
+
+#########################################################
+################# Metagenomics Workflow #################
+#########################################################
+
+rule wf_metagenomics:
+    message: "Running metagenomics workflow"
+    intput:
+        raw_reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq"
+    params:
+        pipeline = "epi2me-labs/wf-metagenomics"
+    handover: True
+    shell:
+        """
+        nextflow run {params.pipeline} --fastq {input.raw_reads} --classifier kraken2 --include_read_assignements True --out_dir {BIN_DIR}/{{sample}}
+        grep "^U" {BIN_IDR}/{{sample}}/output/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{print $2}' > {BIN_IDR}/{{sample}}/U_reads.IDS
+        seqtk subseq {input.raw_reads} {BIN_IDR}/{{sample}}/U_reads.IDS > {BIN_IDR}/{{sample}}/U_reads.fastq
+        """
+
+
+#########################################################
+################# Read Correction #######################
+#########################################################
+
+rule dorado_correct: 
+    message: "Correcting reads based on HERRO algorithm"
+    input:
+        reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
+    output:
+        corrected_reads =  f"{CORRECT_DIR}/{{sample}}/corrected/herro/reads.fasta",
+    shell:
+        """
+        dorado correct {input.reads} > {output.corrected_reads}
+        """
+
+#########################################################
+###################### NanoPlot #########################
+#########################################################
+
+rule nanoplot_corrected:
+    message: "Generating graph with Nanoplot"
+    input:
+        reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+    shell:
+        """
+        NanoPlot --fasta {input.reads} -o {CORRECT_DIR}/{{sample}}
+        """
+
+
+#########################################################
+############# Assembly with Flye ########################
+#########################################################
+
+rule flye_assembly:
+    message: "Assembling corrected read with Flye"
+    input:
+        corrected_reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+    output:
+        d = f"{ASSEMBLY_DIR}/{{sample}}/Flye"
+    shell:
+        """
+        flye --nano-corr {input.corrected_reads} --out-dir {output.d}
+        """
+
+
+
+
+
