@@ -1,1 +1,1 @@
-snakemake --rulegraph --dry-run | dot -Tpng > images/dag.png
+snakemake --rulegraph | dot -Tpng > images/dag.png
