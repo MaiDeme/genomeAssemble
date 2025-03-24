@@ -60,12 +60,13 @@ rule wf_metagenomics:
         U_IDS = f"{BIN_DIR}/{{sample}}/U_reads.IDS",
         U_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
     params:
+        outdir = f"{BIN_DIR}/{{sample}}"
         pipeline = "epi2me-labs/wf-metagenomics"
     handover: True
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} --classifier kraken2 --include_read_assignements True --out_dir {BIN_DIR}/{{sample}}
-        grep "^U" {BIN_IDR}/{{sample}}/output/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{print $2}' > {BIN_IDR}/{{sample}}/U_reads.IDS
+        nextflow run {params.pipeline} --fastq {input.raw_reads} --classifier kraken2 --include_read_assignements True --out_dir {outdir}
+        grep "^U" {outdir}/output/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
         seqtk subseq {input.raw_reads} {output.U_IDS} > {output.U_reads}
         """
 
