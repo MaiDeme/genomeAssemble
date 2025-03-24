@@ -65,8 +65,8 @@ rule wf_metagenomics:
     handover: True
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} --classifier kraken2 --include_read_assignements True --out_dir {outdir}
-        grep "^U" {outdir}/output/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
+        nextflow run {params.pipeline} --fastq {input.raw_reads} --classifier kraken2 --include_read_assignements True --out_dir {params.outdir}
+        grep "^U" {params.outdir}/output/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
         seqtk subseq {input.raw_reads} {output.U_IDS} > {output.U_reads}
         """
 
