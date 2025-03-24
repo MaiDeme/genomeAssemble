@@ -60,7 +60,7 @@ rule wf_metagenomics:
         U_IDS = f"{BIN_DIR}/{{sample}}/U_reads.IDS",
         U_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
     params:
-        outdir = f"{BIN_DIR}/{{sample}}"
+        outdir = f"{BIN_DIR}/{{sample}}",
         pipeline = "epi2me-labs/wf-metagenomics"
     handover: True
     shell:
