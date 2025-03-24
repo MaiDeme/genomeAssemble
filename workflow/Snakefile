@@ -1,4 +1,4 @@
-configfile: "config.yaml"
+configfile: "..config/config.yaml"
 
 WORKING_DIR = config["working_dir"]
 
@@ -12,8 +12,10 @@ ASSEMBLY_DIR = config["assembly_dir"]
 
 rule all:
     input:
-        expand(f"{BASECALL_DIR}/{{sample}}/corrected/herro/reads.fasta", sample=SAMPLES),
-        expand(f"{BASECALL_DIR}/{{sample}}/corrected/herro/summary.txt", sample=SAMPLES)
+        expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
+        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES)
+        expand(f"{CORRECT_DIR}/{{sample}}/reads.fasta", sample=SAMPLES)
+       
 
 
 #########################################################
@@ -65,7 +67,6 @@ rule wf_metagenomics:
         seqtk subseq {input.raw_reads} {BIN_IDR}/{{sample}}/U_reads.IDS > {BIN_IDR}/{{sample}}/U_reads.fastq
         """
 
-
 #########################################################
 ################# Read Correction #######################
 #########################################################
@@ -107,7 +108,7 @@ rule flye_assembly:
         d = f"{ASSEMBLY_DIR}/{{sample}}/Flye"
     shell:
         """
-        flye --nano-corr {input.corrected_reads} --out-dir {output.d}
+        flye --nano-corr {input.corrected_reads} -o {output.d}
         """
 
 
