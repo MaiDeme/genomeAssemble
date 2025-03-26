@@ -1,4 +1,5 @@
 import argparse
+import matplotlib.pyplot as plt
 
 def read_fasta(file_path):
     """Reads a FASTA file and returns a list of sequence lengths."""
@@ -19,9 +20,13 @@ def read_fasta(file_path):
 
 
 def calculate_n50(lengths):
-    total_length = sum(lengths)
     sorted_lengths = sorted(lengths)
     cumulative_length = 0
+    sorted_lengths = sorted_lengths[:-3]
+    print(sorted_lengths)
+
+    total_length= sum(sorted_lengths)
+
     for length in sorted_lengths:
         cumulative_length += length
         if cumulative_length >= total_length / 2:
@@ -38,16 +43,13 @@ def calculate_l50(lengths):
             return len(sorted_lengths) - sorted_lengths.index(length)
     return None
 
-def calculate_n90(lengths):
-    total_length = sum(lengths)
-    sorted_lengths = sorted(lengths)
-    cumulative_length = 0
-    for length in sorted_lengths:
-        cumulative_length += length
-        if cumulative_length >= total_length * 0.9:
-            return length
-    return None
+def contigs_more_than_n(lengths, n):
+    return len([length for length in lengths if length > n])
 
+def histogram(lengths):
+    plt.hist(lengths, bins=100)
+    plt.show()
+    
 
 def main():
     parser = argparse.ArgumentParser()
@@ -57,10 +59,10 @@ def main():
     lengths = read_fasta(args.fasta_file)
     n50 = calculate_n50(lengths)
     l50 = calculate_l50(lengths)
-    n90 = calculate_n90(lengths)
+    histogram(lengths)
+    print(f"contigs more than 100: {contigs_more_than_n(lengths, 1000000)}")
     print(f"N50: {n50}")
     print(f"L50: {l50}")
-    print(f"N90: {n90}")
 
 
 if __name__ == "__main__":
