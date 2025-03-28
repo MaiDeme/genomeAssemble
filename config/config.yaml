@@ -15,6 +15,3 @@ samples :
   #- RCC7848
   #- RCC7855
 
-- name: snakemake
-  uses: snakemake/snakemake-github-action@v2.0.0
-
