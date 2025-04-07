@@ -10,7 +10,7 @@ assembly_dir: /mnt/storage11Tb_3/ArctiVerse/01.Assembly/00.Genomes/01.Assembly
 samples : 
   #- RCC7838
   #- RCC7839
-  - RCC7840
+  - RCC0000
   #- RCC7841
   #- RCC7847
   #- RCC7848
