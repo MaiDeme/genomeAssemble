@@ -21,5 +21,5 @@ threads: 15
 ############### WORLFLOW VARIATION ####################
 basecalling: yes # yes, no
 correcting_long_reads: None # dorado_correct, None
-assembler: masurca  # masurca, flye, nextdenovo
+assembler: flye  # masurca, flye, nextdenovo
 use_polishing: false # false, true
