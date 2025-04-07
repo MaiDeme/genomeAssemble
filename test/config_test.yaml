@@ -1,11 +1,11 @@
 ---
-working_dir: /mnt/storage11Tb_3/ArctiVerse
+working_dir: "."
 short_reads_dir: test
 long_reads_dir: test
-basecall_dir: /mnt/storage11Tb_3/ArctiVerse/00.Data/01.Basecalling/00.DNA/01.MinION
-correct_dir : /mnt/storage11Tb_3/ArctiVerse/00.Data/02.Correcting/00.DNA/01.MinION
-bin_dir : /mnt/storage11Tb_3/ArctiVerse/00.Data/03.Binning/00.DNA/01.MinION
-assembly_dir: /mnt/storage11Tb_3/ArctiVerse/01.Assembly/00.Genomes/01.Assembly
+basecall_dir: 00.Data/01.Basecalling/00.DNA/01.MinION
+correct_dir : /00.Data/02.Correcting/00.DNA/01.MinION
+bin_dir : 00.Data/03.Binning/00.DNA/01.MinION
+assembly_dir: 01.Assembly/00.Genomes/01.Assembly
 
 samples : 
   #- RCC7838
