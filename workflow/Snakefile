@@ -108,19 +108,18 @@ if config['correcting_long_reads'] == "dorado_correct":
 ############# Assembly with Flye ########################
 #########################################################
 
-# if config["assembler"] == flye:
-#     rule flye_assembly:
-#         message: "Assembling corrected read with Flye"
-#         input:
-#             corrected_reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
-#         params:
-#             d = f"{ASSEMBLY_DIR}/{{sample}}/Flye",
-#         shell:
-#             """
-#             flye --nano-corr {input.corrected_reads} -o {params.d}
-#             """
-
-# elif config["assembler"] == masurca:
+if config["assembler"] == "flye":
+    rule flye_assembly:
+        message: "Assembling corrected read with Flye"
+        input:
+            corrected_reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+        params:
+            d = f"{ASSEMBLY_DIR}/{{sample}}/Flye",
+        shell:
+            """
+            flye --nano-corr {input.corrected_reads} -o {params.d}
+            """
+# elif config["assembler"] == "masurca":
 #     rule masurca:
 #         message: "Hybrid assembling read with Masurca"
 #         input : 
@@ -129,7 +128,6 @@ if config['correcting_long_reads'] == "dorado_correct":
 #             raw_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
 #         params:
 #             threads = config["threads"],
-
 #         shell:
 #             """
 #             masurca -t {params.threads}  -i 
