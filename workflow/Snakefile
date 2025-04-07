@@ -21,7 +21,7 @@ rule all:
 #########################################################
 ################# Basecalling ###########################
 #########################################################
-if config['basecalling'] == 'yes':
+if config['basecalling'] == True:
 
     rule dorado_basecalling:
         message: "Basecalling with dorado"

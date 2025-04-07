@@ -19,7 +19,7 @@ samples :
 ############## GENERAL PARAMETERS ######################
 threads: 15
 ############### WORLFLOW VARIATION ####################
-basecalling: yes # yes, no
-correcting_long_reads: None # dorado_correct, None
-assembler: flye  # masurca, flye, nextdenovo
+basecalling: true # yes, no
+correcting_long_reads: "None" # dorado_correct, None
+assembler: "flye"  # masurca, flye, nextdenovo
 use_polishing: false # false, true
