@@ -6,10 +6,10 @@ SAMPLES = config["samples"]
 
 SHORT_READS_DIR = config["short_reads_dir"]
 LONG_READS_DIR = config["long_reads_dir"]
-BASECALL_DIR = config["basecall_dir"]
-BIN_DIR = config["bin_dir"]
-CORRECT_DIR = config["correct_dir"]
-ASSEMBLY_DIR = config["assembly_dir"]
+BASECALL_DIR = WORKING_DIR + "/basecall"
+BIN_DIR = WORKING_DIR + "/bin"
+CORRECT_DIR = WORKING_DIR + "/correct"
+ASSEMBLY_DIR = WORKING_DIR + "/assembly"
 
 rule all:
     input:
@@ -21,7 +21,7 @@ rule all:
 #########################################################
 ################# Basecalling ###########################
 #########################################################
-if config['basecalling'] == True:
+if config['basecalling'] == True :
 
     rule dorado_basecalling:
         message: "Basecalling with dorado"
