@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Étape 1 : Cloner le dépôt
+      # Step 1: Clone the repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Étape 2 : Installer Python et Snakemake
+      # Step 2: Set up Python and install Snakemake
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -28,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install snakemake
 
-      # Étape 3 : Valider le workflow avec un dry-run
-      - name: Validate Snakemake workflow
+      # Step 3: Run Snakemake dry-run with test data
+      - name: Validate Snakemake workflow with test data
         run: |
-          snakemake --cores 1 --dry-run
+          snakemake --configfile test/config_test.yaml --cores 1 --dry-run
