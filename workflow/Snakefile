@@ -15,8 +15,9 @@ rule all:
     input:
         expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
         expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES) if config['correcting_long_reads'] == "dorado_correct" else [],
+        expand(f"{BIN_DIR}/{{sample}}/U_reads.fastq", sample=SAMPLES),
+        expand(f"{BIN_DIR}/{{sample}}/U_reads.IDS", sample=SAMPLES),
        
-
 
 #########################################################
 ################# Basecalling ###########################
@@ -29,7 +30,8 @@ if config['basecalling'] == True :
             pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5/"
         output: 
             reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
-
+        log:
+            f"{BASECALL_DIR}/{{sample}}/basecalling.log"
         shell: 
             """
             dorado basecaller sup {input.pod5} > {output.reads} --device cuda:0 --emit-fastq
@@ -45,6 +47,8 @@ rule nanoplot:
         reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
     params:
         outdir = f"{BASECALL_DIR}/{{sample}}/report"
+    log: 
+        f"{BASECALL_DIR}/{{sample}}/nanoplot.log"
     shell:
         """
         mkdir -p {params.outdir}
@@ -102,7 +106,6 @@ if config['correcting_long_reads'] == "dorado_correct":
             NanoPlot --fasta {input.reads} -o {CORRECT_DIR}/{{sample}}
             """
 
-
 #########################################################
 ############# Assembly with Flye ########################
 #########################################################
@@ -131,7 +134,6 @@ if config["assembler"] == "flye":
 #             """
 #             masurca -t {params.threads}  -i 
 #             """
-
 
 ##########################################################
 #################### Polishing with Racon ################
