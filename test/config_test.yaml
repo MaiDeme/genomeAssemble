@@ -1,0 +1,34 @@
+working_dir: &working_dir /mnt/storage11Tb_3/ArctiVerse
+
+
+
+short_reads_dir: *working_dir/00.Data/00.Sequencing/00.DNA/01.MinION
+long_reads_dir: *working_dir/00.Data/00.Sequencing/00.DNA/00.DNBSeq
+
+basecall_dir: *working_dir/00.Data/01.Basecalling/00.DNA/01.MinION
+correct_dir : *working_dir/00.Data/02.Correcting/00.DNA/01.MinION
+bin_dir : *working_dir/00.Data/03.Binning/00.DNA/01.MinION
+assembly_dir: *working_dir/01.Assembly/00.Genomes/01.Assembly
+
+
+samples : 
+  #- RCC7838
+  #- RCC7839
+  - RCC7840
+  #- RCC7841
+  #- RCC7847
+  #- RCC7848
+  #- RCC7855
+
+############## GENERAL PARAMETERS ######################
+threads: 15
+
+
+############### WORLFLOW VARIATION ####################
+
+basecalling: yes # yes, no
+correcting_long_reads: None # dorado_correct, None
+assembler: masurca  # masurca, flye, nextdenovo
+use_polishing: false # false, true
+
+

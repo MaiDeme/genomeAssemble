@@ -4,11 +4,16 @@ WORKING_DIR = config["working_dir"]
 
 SAMPLES = config["samples"]
 
-SAMPLES_DIR = config["samples_dir"]
+SHORT_READS_DIR = config["short_reads_dir"]
+LONG_READS_DIR = config["long_reads_dir"]
 BASECALL_DIR = config["basecall_dir"]
 BIN_DIR = config["bin_dir"]
 CORRECT_DIR = config["correct_dir"]
 ASSEMBLY_DIR = config["assembly_dir"]
+
+REVERSE_READS = config["reverse_reads"]
+FORWARD_READS = config["forward_reads"]
+
 
 rule all:
     input:
@@ -21,11 +26,12 @@ rule all:
 #########################################################
 ################# Basecalling ###########################
 #########################################################
+if config['basecalling' == 'yes']:
 
-rule dorado_basecalling:
+    rule dorado_basecalling:
     message: "Basecalling with dorado"
     input:
-        pod5 = f"{SAMPLES_DIR}/{{sample}}/pod5/"
+        pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5/"
     output: 
         reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
 
@@ -42,11 +48,13 @@ rule nanoplot:
     message: "Generating graph with Nanoplot"
     input:
         reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+    params:
+        outdir = f"{BASECALL_DIR}/{{sample}}/report"
     shell:
         """
-        NanoPlot --fastq {input.reads} -o {BASECALL_DIR}/{{sample}}
+        mkdir -p {params.outdir}
+        NanoPlot --fastq {input.reads} -o {params.outdir}
         """
-
 
 #########################################################
 ################# Metagenomics Workflow #################
@@ -74,43 +82,74 @@ rule wf_metagenomics:
 ################# Read Correction #######################
 #########################################################
 
-rule dorado_correct: 
-    message: "Correcting reads based on HERRO algorithm"
-    input:
-        reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
-    output:
-        corrected_reads =  f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
-    shell:
-        """
-        dorado correct {input.reads} > {output.corrected_reads}
-        """
+if config['correcting_long_reads'] == "dorado_correct":
+    rule dorado_correct: 
+        message: "Correcting reads based on HERRO algorithm"
+        input:
+            reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
+        output:
+            corrected_reads =  f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
+        shell:
+            """
+            dorado correct {input.reads} > {output.corrected_reads}
+            """
 
 #########################################################
 ###################### NanoPlot #########################
 #########################################################
 
-rule nanoplot_corrected:
-    message: "Generating graph with Nanoplot"
-    input:
-        reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
-    shell:
-        """
-        NanoPlot --fasta {input.reads} -o {CORRECT_DIR}/{{sample}}
-        """
+    rule nanoplot_corrected:
+        message: "Generating graph with Nanoplot"
+        input:
+            reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+        shell:
+            """
+            NanoPlot --fasta {input.reads} -o {CORRECT_DIR}/{{sample}}
+            """
 
 
 #########################################################
 ############# Assembly with Flye ########################
 #########################################################
 
-rule flye_assembly:
-    message: "Assembling corrected read with Flye"
-    input:
-        corrected_reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
-    output:
-        d = f"{ASSEMBLY_DIR}/{{sample}}/Flye",
-        assembly = f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta"
-    shell:
-        """
-        flye --nano-corr {input.corrected_reads} -o {output.d}
-        """
+# if config["assembler"] == flye:
+#     rule flye_assembly:
+#         message: "Assembling corrected read with Flye"
+#         input:
+#             corrected_reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+#         params:
+#             d = f"{ASSEMBLY_DIR}/{{sample}}/Flye",
+#         shell:
+#             """
+#             flye --nano-corr {input.corrected_reads} -o {params.d}
+#             """
+
+# elif config["assembler"] == masurca:
+#     rule masurca:
+#         message: "Hybrid assembling read with Masurca"
+#         input : 
+#             forward_reads = f"{FO},
+#             reverse_reads = f"{LONG_READS_DIR}/{{sample}}/reverse.fastq",
+#             raw_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
+#         params:
+#             threads = config["threads"],
+
+#         shell:
+#             """
+#             masurca -t {params.threads}  -i 
+#             """
+
+
+##########################################################
+#################### Polishing with Racon ################
+##########################################################
+
+# rule racon:
+#     message: "Polishing assembly with Racon"
+#     input:
+#         assembly = f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
+#         reads: f""
+#     output: 
+#         polished_assembly = "something"
+#     params:
+#         mapping1 = "ll"
