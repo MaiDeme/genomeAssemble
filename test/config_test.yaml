@@ -1,7 +1,7 @@
 ---
 working_dir: /mnt/storage11Tb_3/ArctiVerse
-short_reads_dir: test/
-long_reads_dir: test/
+short_reads_dir: test
+long_reads_dir: test
 basecall_dir: /mnt/storage11Tb_3/ArctiVerse/00.Data/01.Basecalling/00.DNA/01.MinION
 correct_dir : /mnt/storage11Tb_3/ArctiVerse/00.Data/02.Correcting/00.DNA/01.MinION
 bin_dir : /mnt/storage11Tb_3/ArctiVerse/00.Data/03.Binning/00.DNA/01.MinION
