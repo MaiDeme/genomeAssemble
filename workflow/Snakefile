@@ -11,10 +11,6 @@ BIN_DIR = config["bin_dir"]
 CORRECT_DIR = config["correct_dir"]
 ASSEMBLY_DIR = config["assembly_dir"]
 
-REVERSE_READS = config["reverse_reads"]
-FORWARD_READS = config["forward_reads"]
-
-
 rule all:
     input:
         expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
@@ -29,16 +25,16 @@ rule all:
 if config['basecalling'] == 'yes':
 
     rule dorado_basecalling:
-    message: "Basecalling with dorado"
-    input:
-        pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5/"
-    output: 
-        reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+        message: "Basecalling with dorado"
+        input:
+            pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5/"
+        output: 
+            reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
 
-    shell: 
-        """
-        dorado basecaller sup {input.pod5} > {output.reads} --device cuda:0 --emit-fastq
-        """ 
+        shell: 
+            """
+            dorado basecaller sup {input.pod5} > {output.reads} --device cuda:0 --emit-fastq
+            """ 
 
 #########################################################
 ################# Nanoplot ##############################
