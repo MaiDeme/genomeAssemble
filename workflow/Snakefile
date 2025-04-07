@@ -14,8 +14,8 @@ ASSEMBLY_DIR = config["assembly_dir"]
 rule all:
     input:
         expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
-        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES) if config['assembler'] == "flye" else None,
-        expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES) if config['correcting_long_reads'] == "dorado_correct" else None,
+        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES) if config['assembler'] == "flye" else [],
+        expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES) if config['correcting_long_reads'] == "dorado_correct" else [],
        
 
 
