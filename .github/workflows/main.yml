@@ -31,4 +31,4 @@ jobs:
       # Step 3: Run Snakemake dry-run with test data
       - name: Validate Snakemake workflow with test data
         run: |
-          snakemake --configfile test/config_test.yaml --cores 1 --dry-run
+          snakemake --configfile test/config_test.yaml --cores 10
