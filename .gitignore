@@ -2,3 +2,8 @@
 .vscode/
 data/
 dev/
+.nextflow*
+.temp*
+work
+output
+store_dir

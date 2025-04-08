@@ -1,8 +1,6 @@
 ---
-working_dir: "."
-pod5_dir: test
-short_reads_dir: test
-long_reads_dir: test
+working_dir: "test/"
+
 samples : 
   #- RCC7838
   #- RCC7839
@@ -19,3 +17,12 @@ basecalling: true # yes, no
 correcting_long_reads: "None" # dorado_correct, None
 assembler: "flye"  # masurca, flye, nextdenovo
 use_polishing: false # false, true
+
+kraken_db: "/mnt/storage11Tb_1/LIBRARIES/Standard-8/k2_standard_08gb_20240605_db"
+taxonomy: "/mnt/storage11Tb_1/LIBRARIES/Standard-8/new_taxdump_2024-09-01_db"
+
+
+############## DIRECTORY PARAMS #########################
+pod5_dir: "test"
+short_reads_dir: "test"
+long_reads_dir: "test"

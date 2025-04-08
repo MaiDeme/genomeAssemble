@@ -6,18 +6,19 @@ SAMPLES = config["samples"]
 
 SHORT_READS_DIR = config["short_reads_dir"]
 LONG_READS_DIR = config["long_reads_dir"]
-BASECALL_DIR = WORKING_DIR + "/basecall"
-BIN_DIR = WORKING_DIR + "/bin"
-CORRECT_DIR = WORKING_DIR + "/correct"
-ASSEMBLY_DIR = WORKING_DIR + "/assembly"
+BASECALL_DIR = WORKING_DIR + "basecall"
+BIN_DIR = WORKING_DIR + "binning"
+CORRECT_DIR = WORKING_DIR + "correct"
+ASSEMBLY_DIR = WORKING_DIR + "assembly"
 
 rule all:
     input:
         expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
+        expand(f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt", sample=SAMPLES),
         expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES) if config['correcting_long_reads'] == "dorado_correct" else [],
         expand(f"{BIN_DIR}/{{sample}}/U_reads.fastq", sample=SAMPLES),
         expand(f"{BIN_DIR}/{{sample}}/U_reads.IDS", sample=SAMPLES),
-       
+        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES) if config["assembler"] == "flye" else [],
 
 #########################################################
 ################# Basecalling ###########################
@@ -27,35 +28,38 @@ if config['basecalling'] == True :
     rule dorado_basecalling:
         message: "Basecalling with dorado"
         input:
-            pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5/"
+            pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5"
         output: 
             reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
         log:
-            f"{BASECALL_DIR}/{{sample}}/basecalling.log"
+            f"{BASECALL_DIR}/{{sample}}/dorado.log"
         shell: 
             """
-            dorado basecaller sup {input.pod5} > {output.reads} --device cuda:0 --emit-fastq
+            dorado basecaller sup --device cuda:0 --emit-fastq {input.pod5} > {output.reads} 2> {log}
             """ 
-
 #########################################################
 ################# Nanoplot ##############################
 #########################################################
 
-rule nanoplot:
-    message: "Generating graph with Nanoplot"
-    input:
-        reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
-    params:
-        outdir = f"{BASECALL_DIR}/{{sample}}/report"
-    log: 
-        f"{BASECALL_DIR}/{{sample}}/nanoplot.log"
-    shell:
-        """
-        mkdir -p {params.outdir}
-        NanoPlot --fastq {input.reads} -o {params.outdir}
-        """
+    rule nanoplot:
+        message: "Generating graph with Nanoplot"
+        input:
+            reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+        params:
+            outdir = f"{BASECALL_DIR}/{{sample}}/report"
+        log: 
+            f"{BASECALL_DIR}/{{sample}}/nanoplot.log"
+        conda:
+            'nanoplot'
+        output:
+            report = f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt"
+        shell:
+            """
+            mkdir -p {params.outdir}
+            NanoPlot --fastq {input.reads} -o {params.outdir}
+            """
 
-#########################################################
+    #########################################################
 ################# Metagenomics Workflow #################
 #########################################################
 
@@ -67,13 +71,16 @@ rule wf_metagenomics:
         U_IDS = f"{BIN_DIR}/{{sample}}/U_reads.IDS",
         U_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
     params:
+        threads = config["threads"],
         outdir = f"{BIN_DIR}/{{sample}}",
-        pipeline = "epi2me-labs/wf-metagenomics"
+        pipeline = "epi2me-labs/wf-metagenomics",
+        kraken_db = config["kraken_db"],
+        taxonomy = config["taxonomy"],
     handover: True
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} --classifier kraken2 --include_read_assignements True --out_dir {params.outdir}
-        grep "^U" {params.outdir}/output/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
+        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db}  --taxonomy {params.taxonomy}
+        grep "^U" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
         seqtk subseq {input.raw_reads} {output.U_IDS} > {output.U_reads}
         """
 
@@ -101,9 +108,13 @@ if config['correcting_long_reads'] == "dorado_correct":
         message: "Generating graph with Nanoplot"
         input:
             reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+        params:
+            outdir = f"{CORRECT_DIR}/{{sample}}/report"
+        conda:
+            'nanoplot'
         shell:
             """
-            NanoPlot --fasta {input.reads} -o {CORRECT_DIR}/{{sample}}
+            NanoPlot --fasta {input.reads} -o {params.outdir}
             """
 
 #########################################################
@@ -112,15 +123,20 @@ if config['correcting_long_reads'] == "dorado_correct":
 
 if config["assembler"] == "flye":
     rule flye_assembly:
-        message: "Assembling corrected read with Flye"
+        message: "Assembling read with Flye"
         input:
-            corrected_reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
+            raw_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
         params:
             d = f"{ASSEMBLY_DIR}/{{sample}}/Flye",
+        output:
+            assembly = f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
+        conda:
+            "Assembly"
         shell:
             """
-            flye --nano-corr {input.corrected_reads} -o {params.d}
+            flye --nano-raw {input.raw_reads} -o {params.d}
             """
+    
 # elif config["assembler"] == "masurca":
 #     rule masurca:
 #         message: "Hybrid assembling read with Masurca"
