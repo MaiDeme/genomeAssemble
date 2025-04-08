@@ -1,28 +1,20 @@
 ---
-working_dir: "test/"
+############## DIRECTORY PARAMS #########################
+working_dir: "/home/maiwen/arctiverse/test/output/"
+pod5_dir: "/home/maiwen/arctiverse/test/RCC0000/pod5"
+long_reads_forward: "/home/maiwen/arctiverse/test/RCC0000/sub1.fq.gz"
+long_reads_reverse: "/home/maiwen/arctiverse/test/RCC0000/sub2.fq.gz"
+
 
 samples : 
-  #- RCC7838
-  #- RCC7839
   - RCC0000
-  #- RCC7841
-  #- RCC7847
-  #- RCC7848
-  #- RCC7855
-
 ############## GENERAL PARAMETERS ######################
 threads: 15
 ############### WORLFLOW VARIATION ####################
 basecalling: true # yes, no
 correcting_long_reads: "None" # dorado_correct, None
-assembler: "flye"  # masurca, flye, nextdenovo
+assembler: "masurca"  # masurca, flye, nextdenovo
 use_polishing: false # false, true
 
-kraken_db: "/mnt/storage11Tb_1/LIBRARIES/Standard-8/k2_standard_08gb_20240605_db"
-taxonomy: "/mnt/storage11Tb_1/LIBRARIES/Standard-8/new_taxdump_2024-09-01_db"
-
-
-############## DIRECTORY PARAMS #########################
-pod5_dir: "test"
-short_reads_dir: "test"
-long_reads_dir: "test"
+kraken_db: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/k2_standard_08gb_20240605_db"
+taxonomy: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/new_taxdump_2024-09-01_db"

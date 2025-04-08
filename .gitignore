@@ -5,5 +5,6 @@ dev/
 .nextflow*
 .temp*
 work
+work1
 output
 store_dir

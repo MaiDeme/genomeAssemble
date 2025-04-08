@@ -1,166 +1,210 @@
 configfile: "config/config.yaml"
 
+
 WORKING_DIR = config["working_dir"]
 
 SAMPLES = config["samples"]
-
-SHORT_READS_DIR = config["short_reads_dir"]
-LONG_READS_DIR = config["long_reads_dir"]
+POD5 = config["pod5_dir"]
+LG_READS_FORWARD = config["long_reads_forward"]
+LG_READS_REVERSE = config["long_reads_reverse"]
 BASECALL_DIR = WORKING_DIR + "basecall"
 BIN_DIR = WORKING_DIR + "binning"
 CORRECT_DIR = WORKING_DIR + "correct"
 ASSEMBLY_DIR = WORKING_DIR + "assembly"
 
+
 rule all:
     input:
         expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
         expand(f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt", sample=SAMPLES),
-        expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES) if config['correcting_long_reads'] == "dorado_correct" else [],
+        expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES)
+        if config["correcting_long_reads"] == "dorado_correct"
+        else [],
         expand(f"{BIN_DIR}/{{sample}}/U_reads.fastq", sample=SAMPLES),
         expand(f"{BIN_DIR}/{{sample}}/U_reads.IDS", sample=SAMPLES),
-        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES) if config["assembler"] == "flye" else [],
+        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES)
+        if config["assembler"] == "flye"
+        else [],
+        expand(
+            f"{ASSEMBLY_DIR}/{{sample}}/masurca/CA.mr.99.17.15.0.02/primary.genome.scf.fasta",
+            sample=SAMPLES,
+        )
+        if config["assembler"] == "masurca"
+        else [],
+
 
 #########################################################
 ################# Basecalling ###########################
 #########################################################
-if config['basecalling'] == True :
+if config["basecalling"] == True:
 
     rule dorado_basecalling:
-        message: "Basecalling with dorado"
+        message:
+            "Basecalling with dorado"
         input:
-            pod5 = f"{SHORT_READS_DIR}/{{sample}}/pod5"
-        output: 
-            reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+            pod5=f"{POD5}",
+        output:
+            reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
         log:
-            f"{BASECALL_DIR}/{{sample}}/dorado.log"
-        shell: 
+            f"{BASECALL_DIR}/{{sample}}/dorado.log",
+        shell:
             """
             dorado basecaller sup --device cuda:0 --emit-fastq {input.pod5} > {output.reads} 2> {log}
-            """ 
+            """
+
+
 #########################################################
 ################# Nanoplot ##############################
 #########################################################
 
-    rule nanoplot:
-        message: "Generating graph with Nanoplot"
-        input:
-            reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq",
-        params:
-            outdir = f"{BASECALL_DIR}/{{sample}}/report"
-        log: 
-            f"{BASECALL_DIR}/{{sample}}/nanoplot.log"
-        conda:
-            'nanoplot'
-        output:
-            report = f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt"
-        shell:
-            """
+
+rule nanoplot:
+    message:
+        "Generating graph with Nanoplot"
+    input:
+        reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+    params:
+        outdir=f"{BASECALL_DIR}/{{sample}}/report",
+    log:
+        f"{BASECALL_DIR}/{{sample}}/report/nanoplot.log",
+    conda:
+        "nanoplot"
+    output:
+        report=f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt",
+    shell:
+        """
             mkdir -p {params.outdir}
             NanoPlot --fastq {input.reads} -o {params.outdir}
             """
 
-    #########################################################
+
+#########################################################
 ################# Metagenomics Workflow #################
 #########################################################
 
+
 rule wf_metagenomics:
-    message: "Running metagenomics workflow"
+    message:
+        "Running metagenomics workflow"
     input:
-        raw_reads = f"{BASECALL_DIR}/{{sample}}/reads.fastq"
+        raw_reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
     output:
-        U_IDS = f"{BIN_DIR}/{{sample}}/U_reads.IDS",
-        U_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
+        U_IDS=f"{BIN_DIR}/{{sample}}/U_reads.IDS",
+        U_reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
     params:
-        threads = config["threads"],
-        outdir = f"{BIN_DIR}/{{sample}}",
-        pipeline = "epi2me-labs/wf-metagenomics",
-        kraken_db = config["kraken_db"],
-        taxonomy = config["taxonomy"],
+        threads=config["threads"],
+        outdir=f"{BIN_DIR}/{{sample}}",
+        pipeline="epi2me-labs/wf-metagenomics",
+        kraken_db=config["kraken_db"],
+        taxonomy=config["taxonomy"],
     handover: True
+    log:
+        f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db}  --taxonomy {params.taxonomy}
+        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db}  --taxonomy {params.taxonomy} 2> {log}
         grep "^U" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
         seqtk subseq {input.raw_reads} {output.U_IDS} > {output.U_reads}
         """
+
 
 #########################################################
 ################# Read Correction #######################
 #########################################################
 
-if config['correcting_long_reads'] == "dorado_correct":
-    rule dorado_correct: 
-        message: "Correcting reads based on HERRO algorithm"
+if config["correcting_long_reads"] == "dorado_correct":
+
+    rule dorado_correct:
+        message:
+            "Correcting reads based on HERRO algorithm"
         input:
-            reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
+            reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
         output:
-            corrected_reads =  f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
+            corrected_reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
         shell:
             """
             dorado correct {input.reads} > {output.corrected_reads}
             """
 
+
 #########################################################
 ###################### NanoPlot #########################
 #########################################################
 
-    rule nanoplot_corrected:
-        message: "Generating graph with Nanoplot"
-        input:
-            reads = f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta"
-        params:
-            outdir = f"{CORRECT_DIR}/{{sample}}/report"
-        conda:
-            'nanoplot'
-        shell:
-            """
+
+rule nanoplot_corrected:
+    message:
+        "Generating graph with Nanoplot"
+    input:
+        reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
+    params:
+        outdir=f"{CORRECT_DIR}/{{sample}}/report",
+    conda:
+        "nanoplot"
+    shell:
+        """
             NanoPlot --fasta {input.reads} -o {params.outdir}
             """
+
 
 #########################################################
 ############# Assembly with Flye ########################
 #########################################################
 
 if config["assembler"] == "flye":
+
     rule flye_assembly:
-        message: "Assembling read with Flye"
+        message:
+            "Assembling read with Flye"
         input:
-            raw_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
+            raw_reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
         params:
-            d = f"{ASSEMBLY_DIR}/{{sample}}/Flye",
+            d=f"{ASSEMBLY_DIR}/{{sample}}/Flye",
+            threads=config["threads"],
         output:
-            assembly = f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
+            assembly=f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
         conda:
             "Assembly"
         shell:
             """
-            flye --nano-raw {input.raw_reads} -o {params.d}
+            flye --nano-raw {input.raw_reads} -o {params.d} -t {params.threads}
             """
-    
-# elif config["assembler"] == "masurca":
-#     rule masurca:
-#         message: "Hybrid assembling read with Masurca"
-#         input : 
-#             forward_reads = f"{FO},
-#             reverse_reads = f"{LONG_READS_DIR}/{{sample}}/reverse.fastq",
-#             raw_reads = f"{BIN_DIR}/{{sample}}/U_reads.fastq"
-#         params:
-#             threads = config["threads"],
-#         shell:
-#             """
-#             masurca -t {params.threads}  -i 
-#             """
+
+elif config["assembler"] == "masurca":
+
+    rule masurca:
+        message:
+            "Hybrid assembling read with Masurca"
+        input:
+            forward_reads=f"{LG_READS_FORWARD}",
+            reverse_reads=f"{LG_READS_REVERSE}",
+            raw_reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
+        output:
+            assembly=f"{ASSEMBLY_DIR}/{{sample}}/masurca/CA.mr.99.17.15.0.02/primary.genome.scf.fasta",
+        params:
+            d=f"{ASSEMBLY_DIR}/{{sample}}/masurca",
+            threads=config["threads"],
+        log:
+            f"{ASSEMBLY_DIR}/{{sample}}/masurca/masurca.log",
+        conda:
+            "masurca"
+        shell:
+            """
+            cd {params.d}
+            masurca -t {params.threads}  -i {input.forward_reads},{input.reverse_reads} -r {input.raw_reads} 2> {log}
+            cd 
+            """
+
 
 ##########################################################
 #################### Polishing with Racon ################
 ##########################################################
-
 # rule racon:
 #     message: "Polishing assembly with Racon"
 #     input:
 #         assembly = f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
 #         reads: f""
-#     output: 
+#     output:
 #         polished_assembly = "something"
 #     params:
 #         mapping1 = "ll"

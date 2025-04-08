@@ -1,25 +1,20 @@
 ---
-working_dir: /mnt/storage11Tb_3/ArctiVerse
-short_reads_dir: /mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/01.MinION
-long_reads_dir: /mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq
-basecall_dir: /mnt/storage11Tb_3/ArctiVerse/00.Data/01.Basecalling/00.DNA/01.MinION
-correct_dir : /mnt/storage11Tb_3/ArctiVerse/00.Data/02.Correcting/00.DNA/01.MinION
-bin_dir : /mnt/storage11Tb_3/ArctiVerse/00.Data/03.Binning/00.DNA/01.MinION
-assembly_dir: /mnt/storage11Tb_3/ArctiVerse/01.Assembly/00.Genomes/01.Assembly
+############## DIRECTORY PARAMS #########################
+working_dir: /mnt/storage11Tb_3/ArctiVerse/
+pod5_dir: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/01.MinION/RCC7848/pod5"
+long_reads_forward: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7848/E150025109_L01_35_1.fq.gz"
+long_reads_reverse: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7848/E150025109_L01_35_2.fq.gz"
 
 samples : 
-  #- RCC7838
-  #- RCC7839
-  - RCC7840
-  #- RCC7841
-  #- RCC7847
-  #- RCC7848
-  #- RCC7855
+  - RCC7848
 
 ############## GENERAL PARAMETERS ######################
 threads: 15
 ############### WORLFLOW VARIATION ####################
-basecalling: yes # yes, no
-correcting_long_reads: None # dorado_correct, None
-assembler: masurca  # masurca, flye, nextdenovo
+basecalling: true # yes, no
+correcting_long_reads: "None" # dorado_correct, None
+assembler: "masurca"  # masurca, flye, nextdenovo
 use_polishing: false # false, true
+
+kraken_db: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/k2_standard_08gb_20240605_db"
+taxonomy: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/new_taxdump_2024-09-01_db"
