@@ -2,7 +2,6 @@ configfile: "config/config.yaml"
 
 
 WORKING_DIR = config["working_dir"]
-
 SAMPLES = config["samples"]
 POD5 = config["pod5_dir"]
 LG_READS_FORWARD = config["long_reads_forward"]
@@ -15,13 +14,10 @@ ASSEMBLY_DIR = WORKING_DIR + "assembly"
 
 rule all:
     input:
-        expand(f"{BASECALL_DIR}/{{sample}}/reads.fastq", sample=SAMPLES),
         expand(f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt", sample=SAMPLES),
         expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES)
         if config["correcting_long_reads"] == "dorado_correct"
         else [],
-        expand(f"{BIN_DIR}/{{sample}}/U_reads.fastq", sample=SAMPLES),
-        expand(f"{BIN_DIR}/{{sample}}/U_reads.IDS", sample=SAMPLES),
         expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES)
         if config["assembler"] == "flye"
         else [],
@@ -50,6 +46,21 @@ if config["basecalling"] == True:
         shell:
             """
             dorado basecaller sup --device cuda:0 --emit-fastq {input.pod5} > {output.reads} 2> {log}
+            """
+
+    rule compress_fastq_pod5:
+        message:
+            "Compressing fastq file and pod5 folder"
+        input:
+            reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+            pod5=f"{POD5}",
+        output:
+            reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq.gz",
+            pod5=f"{BASECALL_DIR}/{{sample}}/pod5.tar.bz2",
+        shell:
+            """
+            gzip {input.reads}
+            tar -vcjf {output.pod5} {input.pod5}
             """
 
 
@@ -192,7 +203,6 @@ elif config["assembler"] == "masurca":
             """
             cd {params.d}
             masurca -t {params.threads}  -i {input.forward_reads},{input.reverse_reads} -r {input.raw_reads} 2> {log}
-            cd 
             """
 
 

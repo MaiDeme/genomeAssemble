@@ -1,12 +1,12 @@
 ---
 ############## DIRECTORY PARAMS #########################
 working_dir: /mnt/storage11Tb_3/ArctiVerse/
-pod5_dir: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/01.MinION/RCC7848/pod5"
-long_reads_forward: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7848/E150025109_L01_35_1.fq.gz"
-long_reads_reverse: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7848/E150025109_L01_35_2.fq.gz"
+pod5_dir: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/01.MinION/RCC7855/pod5"
+long_reads_forward: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7855/E150025109_L01_49_1.fq.gz"
+long_reads_reverse: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7855/E150025109_L01_49_2.fq.gz"
 
 samples : 
-  - RCC7848
+  - RCC7855
 
 ############## GENERAL PARAMETERS ######################
 threads: 15
