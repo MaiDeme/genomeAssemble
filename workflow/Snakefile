@@ -43,6 +43,8 @@ if config["basecalling"] == True:
             reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
         log:
             f"{BASECALL_DIR}/{{sample}}/dorado.log",
+        conda :
+            "envs/dorado.yaml"
         shell:
             """
             dorado basecaller sup --device cuda:0 --emit-fastq {input.pod5} > {output.reads} 2> {log}
@@ -79,7 +81,7 @@ rule nanoplot:
     log:
         f"{BASECALL_DIR}/{{sample}}/report/nanoplot.log",
     conda:
-        "nanoplot"
+        "envs/nanoplot.yaml"
     output:
         report=f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt",
     shell:
