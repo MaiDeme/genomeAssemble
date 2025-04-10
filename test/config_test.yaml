@@ -1,9 +1,9 @@
 ---
 ############## DIRECTORY PARAMS #########################
-working_dir: "/home/maiwen/arctiverse/test/output/"
-pod5_dir: "/home/maiwen/arctiverse/test/RCC0000/pod5"
-long_reads_forward: "/home/maiwen/arctiverse/test/RCC0000/sub1.fq.gz"
-long_reads_reverse: "/home/maiwen/arctiverse/test/RCC0000/sub2.fq.gz"
+working_dir: "test/output/"
+pod5_dir: "test/RCC0000/pod5"
+long_reads_forward: "test/RCC0000/sub1.fq.gz"
+long_reads_reverse: "test/RCC0000/sub2.fq.gz"
 
 
 samples : 
