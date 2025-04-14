@@ -28,9 +28,14 @@ jobs:
       - name: Install Snakemake
         run: |
           python -m pip install --upgrade pip
-          pip install snakemake
+          pip install snakemake snakefmt
 
-      # Step 3: Run Snakemake dry-run with test data
+      # Step 3: Check Snakemake formatting with snakefmt
+      - name: Check Snakemake formatting
+        run: |
+          snakefmt workflow/Snakefile
+
+      # Step 4: Run Snakemake dry-run with test data
       - name: Validate Snakemake workflow with test data
         run: |
           snakemake --configfile test/config_test.yaml --cores 10 --sdm conda

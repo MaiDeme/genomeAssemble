@@ -1,20 +1,21 @@
 ---
 ############## DIRECTORY PARAMS #########################
 working_dir: /mnt/storage11Tb_3/ArctiVerse/
-pod5_dir: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/01.MinION/RCC7855/pod5"
-long_reads_forward: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7855/E150025109_L01_49_1.fq.gz"
-long_reads_reverse: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7855/E150025109_L01_49_2.fq.gz"
+pod5_dir: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/01.MinION/RCC7838/pod5"
+short_reads_forward: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7838/E150025109_L01_30_1.fq.gz"
+short_reads_reverse: "/mnt/storage11Tb_3/ArctiVerse/00.Data/00.Sequencing/00.DNA/00.DNBSeq/RCC7838/E150025109_L01_30_2.fq.gz"
 
 samples : 
-  - RCC7855
+  - RCC7838
 
 ############## GENERAL PARAMETERS ######################
-threads: 15
+threads: 10
 ############### WORLFLOW VARIATION ####################
-basecalling: true # yes, no
+basecalling: false # true, flase
 correcting_long_reads: "None" # dorado_correct, None
 assembler: "masurca"  # masurca, flye, nextdenovo
 use_polishing: false # false, true
+cleaning: true # false, true
 
-kraken_db: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/k2_standard_08gb_20240605_db"
+kraken_db: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_plusPFP-8/k2_pluspfp_08gb_20240605_db"
 taxonomy: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/new_taxdump_2024-09-01_db"

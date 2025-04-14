@@ -38,7 +38,7 @@ FROM debian:buster AS runtime
 COPY --from=build /venv /venv
 
 # Install system dependencies and GeneMark-ETP
-RUN apt-get update && apt-get install -y snap augustus augustus-data locales locales-all libgl1 procps git && \
+RUN apt-get update && apt-get install -y snap augustus augustus-data locales locales-all libgl1 procps git python3 python3-pip && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/snap-hmm /usr/bin/snap && \
     rm "/venv/bin/fasta" && \
@@ -58,6 +58,14 @@ RUN find /opt/ETP/bin /opt/ETP/tools -type f -name "*.pl" -exec sed -i '1s|^.*$|
 ENV PATH="${PATH}:/opt/ETP/bin/gmes"
 ENV GENEMARK_PATH="/opt/ETP/bin/gmes"
 
+# Install signalp from external source
+
+COPY external/signalp/signalp-6.0h.fast.tar /opt/
+
+RUN tar xf /opt/signalp-6.0h.fast.tar -C /opt/ && \
+    rm /opt/signalp-6.0h.fast.tar && \
+    python3 -m pip install /opt/signalp6_fast/signalp-6-package/
+
 # add it to the PATH and add env variables
 ENV PATH="/venv/bin:$PATH" \
     AUGUSTUS_CONFIG_PATH="/usr/share/augustus/config" \
@@ -68,6 +76,7 @@ ENV PATH="/venv/bin:$PATH" \
     ZOE="/usr/share/snap" \
     USER="me" \
     FUNANNOTATE_DB="/opt/databases"
+
 
 # When image is run, run the code with the environment
 SHELL ["/bin/bash", "-c"]

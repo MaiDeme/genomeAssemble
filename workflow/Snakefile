@@ -1,15 +1,60 @@
+import os
+
+
 configfile: "config/config.yaml"
 
 
 WORKING_DIR = config["working_dir"]
 SAMPLES = config["samples"]
 POD5 = config["pod5_dir"]
-LG_READS_FORWARD = config["long_reads_forward"]
-LG_READS_REVERSE = config["long_reads_reverse"]
-BASECALL_DIR = WORKING_DIR + "basecall"
-BIN_DIR = WORKING_DIR + "binning"
-CORRECT_DIR = WORKING_DIR + "correct"
-ASSEMBLY_DIR = WORKING_DIR + "assembly"
+ST_READS_FORWARD = config["short_reads_forward"]
+ST_READS_REVERSE = config["short_reads_reverse"]
+BASECALL_DIR = WORKING_DIR + "00.Data/01.Basecalling/00.DNA/01.MinION"
+BIN_DIR = WORKING_DIR + "00.Data/03.Binning/00.DNA/01.MinION"
+CORRECT_DIR = WORKING_DIR + "00.Data/02.Correcting/00.DNA/01.MinION"
+ASSEMBLY = WORKING_DIR + "01.Assembly/00.Genomes/01.Assembly"
+
+
+def get_assembly_dir(sample):
+    """
+    Get the assembly directory based on the assembler used.
+    """
+    if config["assembler"] == "flye":
+        return f"{ASSEMBLY}/{sample}/Flye"
+    elif config["assembler"] == "masurca":
+        return f"{ASSEMBLY}/{sample}/masurca"
+    elif config["assembler"] == "canu":
+        return f"{ASSEMBLY}/{sample}/Canu"
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
+
+
+def get_assembly_file(sample):
+    assembly_dir = get_assembly_dir(sample)
+    if config["assembler"] == "flye":
+        return os.path.join(assembly_dir, "assembly.fasta")
+    elif config["assembler"] == "masurca":
+        return os.path.join(
+            assembly_dir, "CA.mr.99.17.15.0.02/primary.genome.scf.fasta"
+        )
+    elif config["assembler"] == "canu":
+        return os.path.join(assembly_dir, "assembly.fasta")
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
+
+
+def get_polishing_dir(sample):
+    """
+    Get the polishing directory based on the assembler used.
+    """
+    if config["assembler"] == "flye":
+        return f"{ASSEMBLY}/{sample}/Flye/polished"
+    elif config["assembler"] == "masurca":
+        return f"{ASSEMBLY}/{sample}/masurca/polished"
+    elif config["assembler"] == "canu":
+        return f"{ASSEMBLY}/{sample}/Canu/polished"
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
 
 
 rule all:
@@ -18,14 +63,19 @@ rule all:
         expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES)
         if config["correcting_long_reads"] == "dorado_correct"
         else [],
-        expand(f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta", sample=SAMPLES)
-        if config["assembler"] == "flye"
+        expand(get_assembly_file("{sample}"), sample=SAMPLES),
+        expand(
+            os.path.join(get_assembly_dir("{sample}"), "clean.done"), sample=SAMPLES
+        )
+        if config["cleaning"] == True
         else [],
         expand(
-            f"{ASSEMBLY_DIR}/{{sample}}/masurca/CA.mr.99.17.15.0.02/primary.genome.scf.fasta",
+            os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "genome.nextpolish.fasta"
+            ),
             sample=SAMPLES,
         )
-        if config["assembler"] == "masurca"
+        if config["use_polishing"] == True
         else [],
 
 
@@ -43,8 +93,6 @@ if config["basecalling"] == True:
             reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
         log:
             f"{BASECALL_DIR}/{{sample}}/dorado.log",
-        conda :
-            "envs/dorado.yaml"
         shell:
             """
             dorado basecaller sup --device cuda:0 --emit-fastq {input.pod5} > {output.reads} 2> {log}
@@ -81,14 +129,14 @@ rule nanoplot:
     log:
         f"{BASECALL_DIR}/{{sample}}/report/nanoplot.log",
     conda:
-        "envs/nanoplot.yaml"
+        "nanoplot"
     output:
         report=f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt",
     shell:
         """
-            mkdir -p {params.outdir}
-            NanoPlot --fastq {input.reads} -o {params.outdir}
-            """
+                mkdir -p {params.outdir}
+                NanoPlot --fastq {input.reads} -o {params.outdir}
+                """
 
 
 #########################################################
@@ -100,10 +148,10 @@ rule wf_metagenomics:
     message:
         "Running metagenomics workflow"
     input:
-        raw_reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+        raw_reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq.gz",
     output:
-        U_IDS=f"{BIN_DIR}/{{sample}}/U_reads.IDS",
-        U_reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
+        UEuk_IDS=f"{BIN_DIR}/{{sample}}/UEuk_reads.IDS",
+        UEuk_reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
     params:
         threads=config["threads"],
         outdir=f"{BIN_DIR}/{{sample}}",
@@ -115,9 +163,9 @@ rule wf_metagenomics:
         f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db}  --taxonomy {params.taxonomy} 2> {log}
-        grep "^U" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}d' > {output.U_IDS}
-        seqtk subseq {input.raw_reads} {output.U_IDS} > {output.U_reads}
+        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r prerelease --taxonomy {params.taxonomy} 2> {log}
+        grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_IDS}
+        seqtk subseq {input.raw_reads} {output.UEuk_IDS} > {output.UEuk_reads}
         """
 
 
@@ -131,7 +179,7 @@ if config["correcting_long_reads"] == "dorado_correct":
         message:
             "Correcting reads based on HERRO algorithm"
         input:
-            reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
+            reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
         output:
             corrected_reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
         shell:
@@ -156,8 +204,8 @@ rule nanoplot_corrected:
         "nanoplot"
     shell:
         """
-            NanoPlot --fasta {input.reads} -o {params.outdir}
-            """
+                NanoPlot --fasta {input.reads} -o {params.outdir}
+                """
 
 
 #########################################################
@@ -170,12 +218,12 @@ if config["assembler"] == "flye":
         message:
             "Assembling read with Flye"
         input:
-            raw_reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
+            raw_reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
         params:
-            d=f"{ASSEMBLY_DIR}/{{sample}}/Flye",
+            d=get_assembly_dir("{sample}"),
             threads=config["threads"],
         output:
-            assembly=f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
+            assembly=get_assembly_file("{sample}"),
         conda:
             "Assembly"
         shell:
@@ -189,16 +237,16 @@ elif config["assembler"] == "masurca":
         message:
             "Hybrid assembling read with Masurca"
         input:
-            forward_reads=f"{LG_READS_FORWARD}",
-            reverse_reads=f"{LG_READS_REVERSE}",
-            raw_reads=f"{BIN_DIR}/{{sample}}/U_reads.fastq",
+            forward_reads=f"{ST_READS_FORWARD}",
+            reverse_reads=f"{ST_READS_REVERSE}",
+            raw_reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
         output:
-            assembly=f"{ASSEMBLY_DIR}/{{sample}}/masurca/CA.mr.99.17.15.0.02/primary.genome.scf.fasta",
+            assembly=get_assembly_file("{sample}"),
         params:
-            d=f"{ASSEMBLY_DIR}/{{sample}}/masurca",
+            d=get_assembly_dir("{sample}"),
             threads=config["threads"],
         log:
-            f"{ASSEMBLY_DIR}/{{sample}}/masurca/masurca.log",
+            os.path.join(get_assembly_dir("{sample}"), "masurca.log"),
         conda:
             "masurca"
         shell:
@@ -207,16 +255,172 @@ elif config["assembler"] == "masurca":
             masurca -t {params.threads}  -i {input.forward_reads},{input.reverse_reads} -r {input.raw_reads} 2> {log}
             """
 
+    if config["cleaning"] == True:
 
-##########################################################
-#################### Polishing with Racon ################
-##########################################################
-# rule racon:
-#     message: "Polishing assembly with Racon"
-#     input:
-#         assembly = f"{ASSEMBLY_DIR}/{{sample}}/Flye/assembly.fasta",
-#         reads: f""
-#     output:
-#         polished_assembly = "something"
-#     params:
-#         mapping1 = "ll"
+        rule clean_masurca:
+            message:
+                "Cleaning Masurca files"
+            input:
+                assembly=get_assembly_file("{sample}"),
+            output:
+                clean_done=os.path.join(get_assembly_dir("{sample}"), "clean.done"),
+            params:
+                d=get_assembly_dir("{sample}"),
+                ca_dir=os.path.join(get_assembly_dir("{sample}"), "CA.mr.99.17.15.0.02"),
+                rm1=os.path.join(get_assembly_dir("{sample}"), "work1"),
+                f1=os.path.join(
+                    get_assembly_dir("{sample}"),
+                    "guillaumeKUnitigsAtLeast32bases_all.fasta",
+                ),
+                f2=os.path.join(get_assembly_dir("{sample}"), "longest_reads.25x.fa"),
+                f3=os.path.join(get_assembly_dir("{sample}"), "pe.cor.fa"),
+                f4=os.path.join(get_assembly_dir("{sample}"), "mr.99*"),
+                f5=os.path.join(get_assembly_dir("{sample}"), "quorum_mer_db.jf"),
+                f6=os.path.join(
+                    get_assembly_dir("{sample}"), "superReadSequences.named.fasta"
+                ),
+            shell:
+                """
+                rm -rf {params.rm1} {params.f1} {params.f2} {params.f3} {params.f4} {params.f5} {params.f6}
+                find {params.ca_dir} -maxdepth 1 -type d -name '[0-9]*' -exec rm -r {{}} +
+                touch {output.clean_done} 
+                """
+
+elif config["assembler"] == "canu":
+
+    rule canu:
+        message:
+            "Assembling read with Canu"
+        input:
+            raw_reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
+        params:
+            d=get_assembly_dir("{sample}"),
+            threads=config["threads"],
+        output:
+            assembly=get_assembly_file("{sample}"),
+        shell:
+            """
+            canu -p {params.d} -d {params.d} genomeSize=5m -nanopore-raw {input.raw_reads}  -threads {params.threads}
+            """
+
+
+#########################################################
+################### Polishing with Racon ################
+#########################################################
+
+if config["use_polishing"] == True:
+
+    rule racon:
+        message:
+            "Polishing assembly with Racon using Long reads"
+        input:
+            assembly=get_assembly_file("{sample}"),
+            reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
+        output:
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "racon", "polished.fasta"
+            ),
+        params:
+            threads=config["threads"],
+            additional_params="-m 8 -x -6 -g -8 -w 500",
+            alg1=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap1.sam"),
+            alg2=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap2.sam"),
+            alg3=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap3.sam"),
+            alg4=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap4.sam"),
+        conda:
+            "racon"
+        shell:
+            """
+            minimap2 -a -t {params.threads} {input.assembly} {input.reads} > {params.alg1}
+            racon {params.additional_params} {input.reads} {params.alg1} {input.assembly} > racon1.fasta
+            minimap2 -a -t {params.threads} racon1.fasta {input.reads} > {params.alg2}
+            racon {params.additional_params} {input.reads} {params.alg2} racon1.fasta > racon2.fasta
+            minimap2 -a -t {params.threads} racon2.fasta {input.reads} > {params.alg3}
+            racon {params.additional_params} {input.reads} {params.alg3} racon2.fasta > racon3.fasta
+            minimap2 -a -t {params.threads} racon3.fasta {input.reads} > {params.alg4}
+            racon {params.additional_params} {input.reads} {params.alg4} racon3.fasta > {output.polished_assembly}
+            rm racon1.fasta racon2.fasta racon3.fasta {params.alg1} {params.alg2} {params.alg3} {params.alg4}
+            
+            """
+
+    rule medaka:
+        message:
+            "Polishing assembly with Medaka using Long reads"
+        input:
+            racon_polished=os.path.join(
+                get_polishing_dir("{sample}"), "racon", "polished.fasta"
+            ),
+            reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
+        output:
+            out=os.path.join(
+                get_assembly_dir("{sample}"), "polished", "medaka", "consensus.fasta"
+            ),
+        params:
+            threads=config["threads"],
+            folder=os.path.join(get_assembly_dir("{sample}"), "polished", "medaka"),
+        conda:
+            "medaka"
+        shell:
+            """
+            medaka_consensus -i {input.reads} -d {input.racon_polished} -o {params.folder} -t {params.threads}
+            """
+
+    rule write_config_file_nextpolish:
+        message:
+            "Writing config file for NextPolish"
+        input:
+            reads_forward=f"{ST_READS_FORWARD}",
+            reads_reverse=f"{ST_READS_REVERSE}",
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "medaka", "consensus.fasta"
+            ),
+        output:
+            config_file=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "run.cfg"
+            ),
+            sgs_fofn=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "sgs_fofn.txt"
+            ),
+        params:
+            workdir=os.path.join(get_polishing_dir("{sample}"), "nextpolish"),
+            genome_size="40M",
+            parallel_jobs=config["threads"],
+            rerun=3,
+        run:
+            with open(output.config_file, "w") as f:
+                f.write("[General]\n")
+                f.write(f"job_type = local\n")
+                f.write(f"job_prefix = nextPolish\n")
+                f.write(f"task = best\n")
+                f.write(f"rewrite = yes\n")
+                f.write(f"rerun = {params.rerun}\n")
+                f.write(f"parallel_jobs = {params.parallel_jobs}\n")
+                f.write(f"genome = {input.polished_assembly}\n")
+                f.write(f"genome_size = {params.genome_size}\n")
+                f.write(f"workdir = {params.workdir}\n")
+                f.write("[sgs_option]\n")
+                f.write(f"sgs_fofn = {output.sgs_fofn}\n")
+                f.write(f"sgs_options = -max_depth 100 -bwa\n")
+            with open(output.sgs_fofn, "w") as f:
+                f.write(f"{input.reads_forward}\n")
+                f.write(f"{input.reads_reverse}\n")
+
+    rule nextpolish:
+        message:
+            "Polishing assembly with NextPolish using Short reads"
+        input:
+            config_file=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "run.cfg"
+            ),
+        output:
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "genome.nextpolish.fasta"
+            ),
+        params:
+            threads=config["threads"],
+        container:
+            "docker://maidem/nextpolish:latest"
+        shell:
+            """
+            nextPolish run.cfg
+            """
