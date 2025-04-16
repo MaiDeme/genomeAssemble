@@ -241,10 +241,10 @@ elif config["assembler"] == "masurca":
             reverse_reads=f"{ST_READS_REVERSE}",
             raw_reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
         output:
-            config_file =f"{ASSEMBLY_DIR}/{{sample}}/masurca/config.txt"
-            script = f"{ASSEMBLY_DIR}/{{sample}}/masurca/assemble.sh",
+            config_file=os.path.join(get_assembly_dir("{sample}"), "config.txt"),
+            script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
         params:
-            d = f"{ASSEMBLY_DIR}/{{sample}}/masurca",
+            d=get_assembly_dir("{sample}"),
         conda:
             "masurca"
         shell:
@@ -274,9 +274,7 @@ elif config["assembler"] == "masurca":
             EOF
             cd {params.d}
             masurca {output.config_file}
-            cd ..
             """
-
 
     rule masurca_first_steps:
         message:
@@ -286,7 +284,7 @@ elif config["assembler"] == "masurca":
             reverse_reads=f"{ST_READS_REVERSE}",
             raw_reads=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
         output:
-            assembly=get_assembly_file("{sample}"),
+            directory(os.path.join(get_assembly_dir("{sample}", "CA.mr.99.17.15.0.02"))),
         params:
             d=get_assembly_dir("{sample}"),
             threads=config["threads"],
@@ -297,19 +295,47 @@ elif config["assembler"] == "masurca":
         shell:
             """
             cd {params.d}
-            masurca -t 2  -i {input.forward_reads},{input.reverse_reads} -r {input.raw_reads} 2> {log}
+            assemble.sh 2> {log}
             """
 
-       
     rule masurca_batch:
         message:
             "Running Masurca batch"
         input:
-            script = f"{ASSEMBLY_DIR}/{{sample}}/masurca/create_mega_reads.sh",
+            script=f"{ASSEMBLY_DIR}/{{sample}}/masurca/create_mega_reads.sh",
         output:
-            file1 = f"{ASSEMBLY_DIR}/{{sample}}/masurca/mr_pass1"
-
-
+            file=[
+                os.path.join(
+                    get_assembly_dir("{sample}"), "mr_pass1", f"mr.batch{i}.success"
+                )
+                for i in range(1, 6)
+            ],
+        conda:
+            "masurca"
+        shell:
+            """
+            ./create_mega_reads.sh 1 & ./create_mega_reads.sh 2 & ./create_mega_reads.sh 3 & ./create_mega_reads.sh 4 & ./create_mega_reads.sh 5 & wait 
+            """
+    
+    rule masurca_last_steps:
+        message: "Hybrid assembling read with Masurca"
+        input:
+            file=[
+                os.path.join(
+                    get_assembly_dir("{sample}"), "mr_pass1", f"mr.batch{i}.success"
+                )
+                for i in range(1, 6)
+            ],
+            config_file = os.path.join(get_assembly_dir,"config.txt")
+        output:
+            assembly = get_assembly_file("{sample}"),
+        conda:
+            "masurca"
+        shell:
+            """
+            masurca {input.config_file}
+            ./assemble.sh
+            """
     if config["cleaning"] == True:
 
         rule clean_masurca:
