@@ -163,7 +163,7 @@ rule wf_metagenomics:
         f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r prerelease --taxonomy {params.taxonomy} 2> {log}
+        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r v2.13.0 --taxonomy {params.taxonomy} 2> {log}
         grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_IDS}
         seqtk subseq {input.raw_reads} {output.UEuk_IDS} > {output.UEuk_reads}
         """
@@ -252,7 +252,7 @@ elif config["assembler"] == "masurca":
         shell:
             """
             cd {params.d}
-            masurca -t {params.threads}  -i {input.forward_reads},{input.reverse_reads} -r {input.raw_reads} 2> {log}
+            masurca -t 2  -i {input.forward_reads},{input.reverse_reads} -r {input.raw_reads} 2> {log}
             """
 
     if config["cleaning"] == True:
