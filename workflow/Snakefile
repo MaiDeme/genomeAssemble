@@ -588,6 +588,10 @@ if config["use_polishing"] == True:
                 if get_mode("racon") == "container"
                 else None
             )
+        output:
+            racon_polished=os.path.join(
+                get_polishing_dir("{sample}"), "racon", "polished.fasta"
+            ),
         shell:
             """
             minimap2 -a -t {params.threads} {input.assembly} {input.reads} > {params.alg1}
@@ -627,6 +631,10 @@ if config["use_polishing"] == True:
                 if get_mode("medaka") == "container"
                 else None
             )
+        output:
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "medaka", "consensus.fasta"
+            ),
         shell:
             """
             medaka_consensus -i {input.reads} -d {input.racon_polished} -o {params.folder} -t {params.threads}
