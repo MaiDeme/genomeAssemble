@@ -25,6 +25,9 @@ def get_mode(name):
         config["software"].get(name, {}).get("execution_mode", config["execution_mode"])
     )
 
+def benchmark_file(wildcards, rule):
+    # This returns a benchmark file path based on the rule name
+    return f"benchmarks/{rule.name}.txt"
 
 def is_fastq_compressed(file_path):
     """
@@ -194,6 +197,8 @@ if run_basecalling:
                 if get_mode("dorado") == "container"
                 else None
             )
+        benchmark:
+            benchmark_file
         shell:
             """
             dorado basecaller sup --device {params.device} --emit-fastq {input.pod5} > {params.file} 2> {log}
@@ -218,6 +223,8 @@ if not is_fastq_compressed(LONG_READS_FASTQ):
             reads=LONG_READS_FASTQ,
         output:
             reads=get_long_reads_file("{sample}"),
+        benchmark:
+            benchmark_file
         shell:
             """
             gzip {input.reads}
@@ -251,6 +258,8 @@ rule nanoplot:
         "nanoplot" if get_mode("nanoplot") == "conda" else None
     container:
         "docker://staphb/nanoplot" if get_mode("nanoplot") == "container" else None
+    benchmark:
+        benchmark_file
     output:
         report=f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt",
     shell:
@@ -296,6 +305,8 @@ if run_binning:
             taxonomy=config["taxonomy"],
             temp_file=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
         handover: True
+        benchmark:
+            benchmark_file
         log:
             f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
         shell:
@@ -337,6 +348,8 @@ if config["correcting_long_reads"] == "dorado_correct":
                 if get_mode("dorado") == "container"
                 else None
             )
+        benchmark:
+            benchmark_file
         shell:
             """
             dorado correct {input.reads} > {output.corrected_reads}
@@ -351,6 +364,8 @@ if config["correcting_long_reads"] == "dorado_correct":
             outdir=f"{CORRECT_DIR}/{{sample}}/report",
         conda:
             "nanoplot" if get_mode("nanoplot") == "conda" else None
+        benchmark:
+            benchmark_file
         container:
             "docker://staphb/nanoplot" if get_mode("nanoplot") == "container" else None
         shell:
@@ -377,6 +392,8 @@ if config["assembler"] == "flye":
             assembly=get_assembly_file("{sample}"),
         conda:
             "Assembly" if get_mode("flye") == "conda" else None
+        benchmark:
+            benchmark_file
         container:
             "docker://staphb/flye:latest" if get_mode("flye") == "container" else None
         shell:
@@ -454,6 +471,8 @@ EOF
         params:
             out_dir=get_assembly_dir("{sample}"),
             threads=THREADS,
+        benchmark:
+            benchmark_file
         log:
             os.path.join(get_assembly_dir("{sample}"), "masurca.log"),
         conda:
@@ -525,6 +544,8 @@ elif config["assembler"] == "canu":
             threads=THREADS,
         output:
             assembly=get_assembly_file("{sample}"),
+        benchmark:
+            benchmark_file
         conda:
             "canu" if get_mode("canu") == "conda" else None
         container:
@@ -559,6 +580,8 @@ if config["use_polishing"] == True:
             alg4=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap4.sam"),
         conda:
             "racon" if get_mode("racon") == "conda" else None
+        benchmark:
+            benchmark_file
         container:
             (
                 "docker://staphb/canu-racon:latest"
@@ -596,6 +619,8 @@ if config["use_polishing"] == True:
             folder=os.path.join(get_assembly_dir("{sample}"), "polished", "medaka"),
         conda:
             "medaka" if get_mode("medaka") == "conda" else None
+        benchmark:
+            benchmark_file
         container:
             (
                 "docker://staphb/medaka:latest"
@@ -660,6 +685,8 @@ if config["use_polishing"] == True:
             ),
         params:
             threads=THREADS,
+        benchmark:
+            benchmark_file
         container:
             "docker://maidem/nextpolish:latest"
         shell:
@@ -707,6 +734,8 @@ rule busco:
         threads=THREADS,
     conda:
         "BUSCO" if get_mode("busco") == "conda" else None
+    benchmark:
+        benchmark_file
     container:
         (
             "docker://ezlabgva/busco:v5.8.2_cv1"
