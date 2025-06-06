@@ -7,16 +7,17 @@ configfile: "config/config_RCC7840.yaml"
 
 WORKING_DIR = config["working_dir"]
 SAMPLES = config["samples"]
-POD5 = config["pod5_dir"]
-ST_READS_FORWARD = config.get["short_reads_forward", None]
-ST_READS_REVERSE = config.get["short_reads_reverse", None]
-LONG_READS_FASTQ = config.get["long_reads_fastq", None]
+POD5 = config.get("pod5_dir", None)
+ST_READS_FORWARD = config.get("short_reads_forward", None)
+ST_READS_REVERSE = config.get("short_reads_reverse", None)
+LONG_READS_FASTQ = config.get("long_reads_fastq", None)
 BASECALL_DIR = WORKING_DIR + "00.Data/01.Basecalling/00.DNA/01.MinION"
 BIN_DIR = WORKING_DIR + "00.Data/03.Binning/00.DNA/01.MinION"
+BINNED_READS = config.get("binned_reads", None)
 CORRECT_DIR = WORKING_DIR + "00.Data/02.Correcting/00.DNA/01.MinION"
 ASSEMBLY = WORKING_DIR + "01.Assembly/00.Genomes/01.Assembly"
 
-THREADS = config.get["threads", 2]
+THREADS = config.get("threads", 2)
 
 
 def get_mode(name):
@@ -29,6 +30,8 @@ def is_fastq_compressed(file_path):
     """
     Check if the file is gzipped.
     """
+    if file_path is None:
+        return True
     return file_path.endswith(".gz")
 
 
@@ -36,7 +39,12 @@ def get_long_reads_file(sample):
     """
     Get the long reads file based on if basecall was done or not.
     """
-    return os.path.join(get_long_reads_dir(sample), "reads.fastq.gz")
+    if run_basecalling:
+        return os.path.join(get_long_reads_dir(sample), "reads.fastq.gz")
+    else:
+        return os.path.join(
+            get_long_reads_dir(sample), os.path.basename(LONG_READS_FASTQ)
+        )
 
 
 def get_long_reads_dir(sample):
@@ -85,11 +93,24 @@ def files_exist(*paths):
     return True
 
 
+def get_bin_dir(sample):
+    """
+    Get the bin directory based on if binning was done or not.
+    """
+    if run_binning:
+        return f"{BIN_DIR}/{sample}/"
+    else:
+        return os.path.dirname(BINNED_READS)
+
+
 def get_binned_reads(sample):
     """
     Get the binned reads from wf-metagenomics
     """
-    return os.path.join(BIN_DIR, sample, "UEuk_reads.fastq.gz")
+    if run_binning:
+        return os.path.join(get_bin_dir(sample), "UEuk_reads.fastq.gz")
+    else:
+        return BINNED_READS
 
 
 def get_polishing_dir(sample):
@@ -108,6 +129,7 @@ def get_polishing_dir(sample):
 
 # Check is basecalling is needed
 run_basecalling = not files_exist(LONG_READS_FASTQ)
+run_binning = not files_exist(BINNED_READS)
 
 
 rule all:
@@ -242,46 +264,47 @@ rule nanoplot:
 ################# Metagenomics Workflow #################
 #########################################################
 
+if run_binning:
 
-rule wf_metagenomics:
-    message:
-        """
-        ============================================
-        [Nextflow] Running metagenomics workflow
-        --------------------------------------------
-        Input files:
-        - {input.raw_reads}
-        Output files:
-        - {output.UEuk_IDS}
-        - {output.UEuk_reads}
-        Parameters:
-        - {params.pipeline}
-        - {params.kraken_db}
-        - {params.taxonomy}
-        ============================================        
-        """
-    input:
-        raw_reads=get_long_reads_file("{sample}"),
-    output:
-        UEuk_IDS=f"{BIN_DIR}/{{sample}}/UEuk_reads.IDS",
-        UEuk_reads=get_binned_reads("{sample}"),
-    params:
-        threads=THREADS,
-        outdir=f"{BIN_DIR}/{{sample}}",
-        pipeline="epi2me-labs/wf-metagenomics",
-        kraken_db=config["kraken_db"],
-        taxonomy=config["taxonomy"],
-        temp_file=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
-    handover: True
-    log:
-        f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
-    shell:
-        """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r v2.13.0 --taxonomy {params.taxonomy} 2> {log}
-        grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_ID}
-        seqtk subseq {input.raw_reads} {output.UEuk_IDS} > {params.temp_file}
-        gzip {params.temp_file}
-        """
+    rule wf_metagenomics:
+        message:
+            """
+            ============================================
+            [Nextflow] Running metagenomics workflow
+            --------------------------------------------
+            Input files:
+            - {input.raw_reads}
+            Output files:
+            - {output.UEuk_IDS}
+            - {output.UEuk_reads}
+            Parameters:
+            - {params.pipeline}
+            - {params.kraken_db}
+            - {params.taxonomy}
+            ============================================        
+            """
+        input:
+            raw_reads=get_long_reads_file("{sample}"),
+        output:
+            UEuk_IDS=f"{BIN_DIR}/{{sample}}/UEuk_reads.IDS",
+            UEuk_reads=get_binned_reads("{sample}"),
+        params:
+            threads=THREADS,
+            outdir=f"{BIN_DIR}/{{sample}}",
+            pipeline="epi2me-labs/wf-metagenomics",
+            kraken_db=config["kraken_db"],
+            taxonomy=config["taxonomy"],
+            temp_file=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
+        handover: True
+        log:
+            f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
+        shell:
+            """
+            nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r v2.13.0 --taxonomy {params.taxonomy} 2> {log}
+            grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_IDS}
+            seqtk subseq {input.raw_reads} {output.UEuk_IDS} > {params.temp_file}
+            gzip {params.temp_file}
+            """
 
 
 #########################################################
@@ -319,27 +342,21 @@ if config["correcting_long_reads"] == "dorado_correct":
             dorado correct {input.reads} > {output.corrected_reads}
             """
 
-
-#########################################################
-###################### NanoPlot #########################
-#########################################################
-
-
-rule nanoplot_corrected:
-    message:
-        "Generating graph with Nanoplot"
-    input:
-        reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
-    params:
-        outdir=f"{CORRECT_DIR}/{{sample}}/report",
-    conda:
-        "nanoplot" if get_mode("nanoplot") == "conda" else None
-    container:
-        "docker://staphb/nanoplot" if get_mode("nanoplot") == "container" else None
-    shell:
-        """
-        NanoPlot --fasta {input.reads} -o {params.outdir}
-        """
+    rule nanoplot_corrected:
+        message:
+            "Generating graph with Nanoplot"
+        input:
+            reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
+        params:
+            outdir=f"{CORRECT_DIR}/{{sample}}/report",
+        conda:
+            "nanoplot" if get_mode("nanoplot") == "conda" else None
+        container:
+            "docker://staphb/nanoplot" if get_mode("nanoplot") == "container" else None
+        shell:
+            """
+            NanoPlot --fasta {input.reads} -o {params.outdir}
+            """
 
 
 #########################################################
@@ -381,6 +398,7 @@ elif config["assembler"] == "masurca":
             script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
         params:
             d=get_assembly_dir("{sample}"),
+            threads=THREADS,
         conda:
             "masurca" if get_mode("masurca") == "conda" else None
         container:
@@ -392,29 +410,29 @@ elif config["assembler"] == "masurca":
         shell:
             """
             cat > {output.config_file} << EOF
-            # Masurca config file
-            # Generated by Snakemake
-            DATA
-            PE = pa 500 50 {input.forward_reads} {input.reverse_reads}      
-            NANOPORE = {input.raw_reads}
-            END
-            PARAMETERS
-            USE_GRID = 0
-            GRID_ENGINE = SLURM
-            GRID_QUEUE = all.q
-            GRID_BATCH_SIZE = 400000000
-            LHE_COVERAGE = 25
-            CA_PARAMETERS = cgwErrorRate = 0.15
-            CLOSE_GAPS = 1
-            NUM_THREADS = 10
-            JF_SIZE = 200000000
-            SOAP_ASSEMBLY = 0
-            FLYE_ASSEMBLY = 0
-            END
-            EOF
-            cd {params.d}
-            masurca {output.config_file}
-            """
+# Masurca config file
+# Generated by Snakemake
+DATA
+PE = pa 500 50 {input.forward_reads} {input.reverse_reads}      
+NANOPORE = {input.raw_reads}
+END
+PARAMETERS
+USE_GRID = 0
+GRID_ENGINE = SLURM
+GRID_QUEUE = all.q
+GRID_BATCH_SIZE = 400000000
+LHE_COVERAGE = 25
+CA_PARAMETERS = cgwErrorRate = 0.15
+CLOSE_GAPS = 1
+NUM_THREADS = {params.threads}
+JF_SIZE = 200000000
+SOAP_ASSEMBLY = 0
+FLYE_ASSEMBLY = 0
+END
+EOF
+        cd {params.d}
+        masurca {output.config_file}
+"""
 
     rule masurca:
         message:
