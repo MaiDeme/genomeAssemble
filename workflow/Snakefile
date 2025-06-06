@@ -277,8 +277,8 @@ rule wf_metagenomics:
         f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
     shell:
         """
-        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r v2.13.0 --taxonomy {params.taxonomy} 2> {log}
-        grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_ID}
+        nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r v2.13.0 --taxonomy {params.taxonomy} > {log} 2>&1
+        grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_ID} 
         seqtk subseq {input.raw_reads} {output.UEuk_IDS} > {params.temp_file}
         gzip {params.temp_file}
         """
