@@ -1,0 +1,720 @@
+import os
+import glob
+
+
+configfile: "config/config_RCC7840.yaml"
+
+
+WORKING_DIR = config["working_dir"]
+SAMPLES = config["samples"]
+POD5 = config.get("pod5_dir", None)
+ST_READS_FORWARD = config.get("short_reads_forward", None)
+ST_READS_REVERSE = config.get("short_reads_reverse", None)
+LONG_READS_FASTQ = config.get("long_reads_fastq", None)
+BASECALL_DIR = WORKING_DIR + "00.Data/01.Basecalling/00.DNA/01.MinION"
+BIN_DIR = WORKING_DIR + "00.Data/03.Binning/00.DNA/01.MinION"
+BINNED_READS = config.get("binned_reads", None)
+CORRECT_DIR = WORKING_DIR + "00.Data/02.Correcting/00.DNA/01.MinION"
+ASSEMBLY = WORKING_DIR + "01.Assembly/00.Genomes/01.Assembly"
+
+THREADS = config.get("threads", 2)
+
+
+def get_mode(name):
+    return (
+        config["software"].get(name, {}).get("execution_mode", config["execution_mode"])
+    )
+
+
+def is_fastq_compressed(file_path):
+    """
+    Check if the file is gzipped.
+    """
+    if file_path is None:
+        return True
+    return file_path.endswith(".gz")
+
+
+def get_long_reads_file(sample):
+    """
+    Get the long reads file based on if basecall was done or not.
+    """
+    if run_basecalling:
+        return os.path.join(get_long_reads_dir(sample), "reads.fastq.gz")
+    else:
+        return os.path.join(
+            get_long_reads_dir(sample), os.path.basename(LONG_READS_FASTQ)
+        )
+
+
+def get_long_reads_dir(sample):
+    """
+    Get the long reads directory based on if basecall was done or not.
+    """
+    if run_basecalling:
+        return f"{BASECALL_DIR}/{sample}/"
+    else:
+        return os.path.dirname(LONG_READS_FASTQ)
+
+
+def get_assembly_dir(sample):
+    """
+    Get the assembly directory based on the assembler used.
+    """
+    if config["assembler"] == "flye":
+        return f"{ASSEMBLY}/{sample}/01.Flye"
+    elif config["assembler"] == "masurca":
+        return f"{ASSEMBLY}/{sample}/01.Masurca"
+    elif config["assembler"] == "canu":
+        return f"{ASSEMBLY}/{sample}/01.Canu"
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
+
+
+def get_assembly_file(sample):
+    assembly_dir = get_assembly_dir(sample)
+    if config["assembler"] == "flye":
+        return os.path.join(assembly_dir, "assembly.fasta")
+    elif config["assembler"] == "masurca":
+        return os.path.join(assembly_dir, "primary.genome.scf.fasta")
+    elif config["assembler"] == "canu":
+        return os.path.join(assembly_dir, "assembly.fasta")
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
+
+
+def files_exist(*paths):
+    """Check if file exists"""
+    if not paths or all(path is None for path in paths):
+        return False
+    missing_files = [path for path in paths if not os.path.exists(path)]
+    if missing_files:
+        raise FileNotFoundError(f"Missing files: {', '.join(missing_files)}")
+    return True
+
+
+def get_bin_dir(sample):
+    """
+    Get the bin directory based on if binning was done or not.
+    """
+    if run_binning:
+        return f"{BIN_DIR}/{sample}/"
+    else:
+        return os.path.dirname(BINNED_READS)
+
+
+def get_binned_reads(sample):
+    """
+    Get the binned reads from wf-metagenomics
+    """
+    if run_binning:
+        return os.path.join(get_bin_dir(sample), "UEuk_reads.fastq.gz")
+    else:
+        return BINNED_READS
+
+
+def get_polishing_dir(sample):
+    """
+    Get the polishing directory based on the assembler used.
+    """
+    if config["assembler"] == "flye":
+        return f"{ASSEMBLY}/{sample}/Flye/polished"
+    elif config["assembler"] == "masurca":
+        return f"{ASSEMBLY}/{sample}/masurca/polished"
+    elif config["assembler"] == "canu":
+        return f"{ASSEMBLY}/{sample}/Canu/polished"
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
+
+
+# Check is basecalling is needed
+run_basecalling = not files_exist(LONG_READS_FASTQ)
+run_binning = not files_exist(BINNED_READS)
+
+
+rule all:
+    input:
+        expand(f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt", sample=SAMPLES)
+        if run_basecalling
+        else [],
+        expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES)
+        if config["correcting_long_reads"] == "dorado_correct"
+        else [],
+        expand(get_assembly_file("{sample}"), sample=SAMPLES),
+        expand(
+            os.path.join(get_assembly_dir("{sample}"), "clean.done"), sample=SAMPLES
+        )
+        if config["cleaning"] == True
+        else [],
+        expand(
+            os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "genome.nextpolish.fasta"
+            ),
+            sample=SAMPLES,
+        )
+        if config["use_polishing"] == True
+        else [],
+
+
+#########################################################
+################# Basecalling ###########################
+#########################################################
+if run_basecalling:
+
+    rule dorado_basecalling:
+        message:
+            """
+            ============================================
+            [Dorado] Long reads basecalling
+            Basecalling sample {wildcards.sample} with dorado
+            --------------------------------------------
+            Input files:
+            - {input.pod5}
+            Output files:
+            - {output.reads}
+            Parameters:
+            - {params.device}
+            - {params.file}
+            ============================================
+            """
+        input:
+            pod5=f"{POD5}",
+        output:
+            reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq.gz",
+        log:
+            f"{BASECALL_DIR}/{{sample}}/dorado.log",
+        params:
+            device="cuda:0",
+            file=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
+        conda:
+            "dorado.yaml" if get_mode("dorado") == "conda" else None
+        container:
+            (
+                "docker://nanoporetech/dorado:sha268dcb4cd02093e75cdc58821f8b93719c4255ed"
+                if get_mode("dorado") == "container"
+                else None
+            )
+        shell:
+            """
+            dorado basecaller sup --device {params.device} --emit-fastq {input.pod5} > {params.file} 2> {log}
+            gzip {params.file}
+            """
+
+
+if not is_fastq_compressed(LONG_READS_FASTQ):
+
+    rule compress_fastq:
+        message:
+            """
+            ============================================
+            [Gzip] Compressing fastq file
+            --------------------------------------------
+            Input files:
+            - {input.reads}
+            Output files:
+            - {output.reads}
+            """
+        input:
+            reads=LONG_READS_FASTQ,
+        output:
+            reads=get_long_reads_file("{sample}"),
+        shell:
+            """
+            gzip {input.reads}
+            """
+
+
+#########################################################
+################# Nanoplot ##############################
+#########################################################
+
+
+rule nanoplot:
+    message:
+        """
+        ============================================
+        [NanoPlot] Generating report
+        --------------------------------------------
+        Input files:
+        - {input.reads}
+        Output files:
+        - {output.report}
+        ============================================
+        """
+    input:
+        reads=get_long_reads_file("{sample}"),
+    params:
+        outdir=f"{BASECALL_DIR}/{{sample}}/report",
+    log:
+        f"{BASECALL_DIR}/{{sample}}/report/nanoplot.log",
+    conda:
+        "nanoplot" if get_mode("nanoplot") == "conda" else None
+    container:
+        "docker://staphb/nanoplot" if get_mode("nanoplot") == "container" else None
+    output:
+        report=f"{BASECALL_DIR}/{{sample}}/report/NanoStats.txt",
+    shell:
+        """
+        mkdir -p {params.outdir}
+        NanoPlot --fastq {input.reads} -o {params.outdir}
+        """
+
+
+#########################################################
+################# Metagenomics Workflow #################
+#########################################################
+
+if run_binning:
+
+    rule wf_metagenomics:
+        message:
+            """
+            ============================================
+            [Nextflow] Running metagenomics workflow
+            --------------------------------------------
+            Input files:
+            - {input.raw_reads}
+            Output files:
+            - {output.UEuk_IDS}
+            - {output.UEuk_reads}
+            Parameters:
+            - {params.pipeline}
+            - {params.kraken_db}
+            - {params.taxonomy}
+            ============================================        
+            """
+        input:
+            raw_reads=get_long_reads_file("{sample}"),
+        output:
+            UEuk_IDS=f"{BIN_DIR}/{{sample}}/UEuk_reads.IDS",
+            UEuk_reads=get_binned_reads("{sample}"),
+        params:
+            threads=THREADS,
+            outdir=f"{BIN_DIR}/{{sample}}",
+            pipeline="epi2me-labs/wf-metagenomics",
+            kraken_db=config["kraken_db"],
+            taxonomy=config["taxonomy"],
+            temp_file=f"{BIN_DIR}/{{sample}}/UEuk_reads.fastq",
+        handover: True
+        log:
+            f"{BIN_DIR}/{{sample}}/wf_metagenomics.log",
+        shell:
+            """
+            nextflow run {params.pipeline} --fastq {input.raw_reads} -profile singularity --classifier kraken2 --include_read_assignments True --out_dir {params.outdir} --threads {params.threads} --database {params.kraken_db} -r v2.13.0 --taxonomy {params.taxonomy} > {log} 2>&1
+            grep -v "Bacteria" {params.outdir}/reads_assignments/reads_lineages.kraken2.assignments.tsv| awk '{{print $2}}' > {output.UEuk_IDS}
+            seqtk subseq {input.raw_reads} {output.UEuk_IDS} > {params.temp_file}
+            gzip {params.temp_file}
+            """
+
+
+#########################################################
+################# Read Correction #######################
+#########################################################
+
+if config["correcting_long_reads"] == "dorado_correct":
+
+    rule dorado_correct:
+        message:
+            """
+            ==============================================
+            [Dorado] Correcting reads
+            ----------------------------------------------
+            Input files:
+            - {input.reads}
+            Output files:
+            - {output.corrected_reads}
+            ==============================================
+            """
+        input:
+            reads=get_binned_reads("{sample}"),
+        output:
+            corrected_reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
+        conda:
+            "dorado.yaml" if get_mode("dorado") == "conda" else None
+        container:
+            (
+                "docker://nanoporetech/dorado:sha268dcb4cd02093e75cdc58821f8b93719c4255ed"
+                if get_mode("dorado") == "container"
+                else None
+            )
+        shell:
+            """
+            dorado correct {input.reads} > {output.corrected_reads}
+            """
+
+    rule nanoplot_corrected:
+        message:
+            "Generating graph with Nanoplot"
+        input:
+            reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
+        params:
+            outdir=f"{CORRECT_DIR}/{{sample}}/report",
+        conda:
+            "nanoplot" if get_mode("nanoplot") == "conda" else None
+        container:
+            "docker://staphb/nanoplot" if get_mode("nanoplot") == "container" else None
+        shell:
+            """
+            NanoPlot --fasta {input.reads} -o {params.outdir}
+            """
+
+
+#########################################################
+############# Assembly with Flye ########################
+#########################################################
+
+if config["assembler"] == "flye":
+
+    rule flye_assembly:
+        message:
+            "Assembling read with Flye"
+        input:
+            raw_reads=get_binned_reads("{sample}"),
+        params:
+            d=get_assembly_dir("{sample}"),
+            threads=THREADS,
+        output:
+            assembly=get_assembly_file("{sample}"),
+        conda:
+            "Assembly" if get_mode("flye") == "conda" else None
+        container:
+            "docker://staphb/flye:latest" if get_mode("flye") == "container" else None
+        shell:
+            """
+            flye --nano-raw {input.raw_reads} -o {params.d} -t {params.threads}
+            """
+
+elif config["assembler"] == "masurca":
+
+    rule create_config_file:
+        message:
+            "Creating config file for Masurca"
+        input:
+            forward_reads=f"{ST_READS_FORWARD}",
+            reverse_reads=f"{ST_READS_REVERSE}",
+            raw_reads=get_binned_reads("{sample}"),
+        output:
+            config_file=os.path.join(get_assembly_dir("{sample}"), "config.txt"),
+            script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
+        params:
+            d=get_assembly_dir("{sample}"),
+            threads=THREADS,
+        conda:
+            "masurca" if get_mode("masurca") == "conda" else None
+        container:
+            (
+                "docker://staphb/masurca:latest"
+                if get_mode("masurca") == "container"
+                else None
+            )
+        shell:
+            """
+            cat > {output.config_file} << EOF
+# Masurca config file
+# Generated by Snakemake
+DATA
+PE = pa 500 50 {input.forward_reads} {input.reverse_reads}      
+NANOPORE = {input.raw_reads}
+END
+PARAMETERS
+USE_GRID = 0
+GRID_ENGINE = SLURM
+GRID_QUEUE = all.q
+GRID_BATCH_SIZE = 400000000
+LHE_COVERAGE = 25
+CA_PARAMETERS = cgwErrorRate = 0.15
+CLOSE_GAPS = 1
+NUM_THREADS = {params.threads}
+JF_SIZE = 200000000
+SOAP_ASSEMBLY = 0
+FLYE_ASSEMBLY = 0
+END
+EOF
+        cd {params.d}
+        masurca {output.config_file}
+"""
+
+    rule masurca:
+        message:
+            """
+            =============================================
+            [Masurca] Hybrid assembly
+            --------------------------------------------
+
+            ====================================================
+            """
+        input:
+            forward_reads=f"{ST_READS_FORWARD}",
+            reverse_reads=f"{ST_READS_REVERSE}",
+            raw_reads=get_binned_reads("{sample}"),
+            config_file=os.path.join(get_assembly_dir("{sample}"), "config.txt"),
+            script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
+        output:
+            os.path.join(get_assembly_file("{sample}")),
+        params:
+            out_dir=get_assembly_dir("{sample}"),
+            threads=THREADS,
+        log:
+            os.path.join(get_assembly_dir("{sample}"), "masurca.log"),
+        conda:
+            "masurca" if get_mode("masurca") == "conda" else None
+        container:
+            (
+                "docker://staphb/masurca:latest"
+                if get_mode("masurca") == "container"
+                else None
+            )
+        shell:
+            """
+            cd {params.out_dir}
+            {input.script} > {log}
+
+            # moving the assembly to the correct folder
+            mv {params.out_dir}/CA.mr.*/primary.genome.scf.fasta {params.out_dir}/primary.genome.scf.fasta
+            mv {params.out_dir}/CA.mr.*/alternative.genome.scf.fasta {params.out_dir}/alternative.genome.scf.fasta
+            """
+
+    if config["cleaning"] == True:
+
+        rule clean_masurca:
+            message:
+                "Cleaning Masurca files"
+            input:
+                assembly=get_assembly_file("{sample}"),
+            output:
+                clean_done=os.path.join(get_assembly_dir("{sample}"), "clean.done"),
+            params:
+                d=get_assembly_dir("{sample}"),
+                ca_dir=os.path.join(get_assembly_dir("{sample}"), "CA.mr"),
+                rm1=os.path.join(get_assembly_dir("{sample}"), "work1"),
+                f1=os.path.join(
+                    get_assembly_dir("{sample}"),
+                    "guillaumeKUnitigsAtLeast32bases_all.fasta",
+                ),
+                f2=os.path.join(get_assembly_dir("{sample}"), "longest_reads.25x.fa"),
+                f3=os.path.join(get_assembly_dir("{sample}"), "pe.cor.fa"),
+                f4=os.path.join(get_assembly_dir("{sample}"), "mr.99*"),
+                f5=os.path.join(get_assembly_dir("{sample}"), "quorum_mer_db.jf"),
+                f6=os.path.join(
+                    get_assembly_dir("{sample}"), "superReadSequences.named.fasta"
+                ),
+                assembly=get_assembly_file("{sample}"),
+                alter_assembly=os.path.join(
+                    get_assembly_dir("{sample}"),
+                    "CA.mr.99.17.15.0.02",
+                    "alternative.genomve.scf.fasta",
+                ),
+                logs=os.path.join(get_assembly_dir("{sample}"), "logs"),
+            shell:
+                """
+                rm -rf {params.rm1} {params.f1} {params.f2} {params.f3} {params.f4} {params.f5} {params.f6} {params.ca_dir}*
+                mkdir -p {params.logs}
+                mv {params.assembly} {params.alter_assembly} {params.d}
+                touch {output.clean_done} 
+                """
+
+elif config["assembler"] == "canu":
+
+    rule canu:
+        message:
+            "Assembling read with Canu"
+        input:
+            raw_reads=get_binned_reads("{sample}"),
+        params:
+            d=get_assembly_dir("{sample}"),
+            threads=THREADS,
+        output:
+            assembly=get_assembly_file("{sample}"),
+        conda:
+            "canu" if get_mode("canu") == "conda" else None
+        container:
+            "docker://staphb/canu-racon" if get_mode("canu") == "container" else None
+        shell:
+            """
+            canu -p {params.d} -d {params.d} genomeSize=5m -nanopore-raw {input.raw_reads}  -threads {params.threads}
+            """
+
+
+#########################################################
+################### Polishing with Racon ################
+#########################################################
+
+if config["use_polishing"] == True:
+
+    rule racon:
+        message:
+            "Polishing assembly with Racon using Long reads"
+        input:
+            assembly=get_assembly_file("{sample}"),
+            reads=get_long_reads_file("{sample}"),
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "racon", "polished.fasta"
+            ),
+        params:
+            threads=THREADS,
+            additional_params="-m 8 -x -6 -g -8 -w 500",
+            alg1=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap1.sam"),
+            alg2=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap2.sam"),
+            alg3=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap3.sam"),
+            alg4=os.path.join(get_polishing_dir("{sample}"), "racon", "minimap4.sam"),
+        conda:
+            "racon" if get_mode("racon") == "conda" else None
+        container:
+            (
+                "docker://staphb/canu-racon:latest"
+                if get_mode("racon") == "container"
+                else None
+            )
+        shell:
+            """
+            minimap2 -a -t {params.threads} {input.assembly} {input.reads} > {params.alg1}
+            racon {params.additional_params} {input.reads} {params.alg1} {input.assembly} > racon1.fasta
+            minimap2 -a -t {params.threads} racon1.fasta {input.reads} > {params.alg2}
+            racon {params.additional_params} {input.reads} {params.alg2} racon1.fasta > racon2.fasta
+            minimap2 -a -t {params.threads} racon2.fasta {input.reads} > {params.alg3}
+            racon {params.additional_params} {input.reads} {params.alg3} racon2.fasta > racon3.fasta
+            minimap2 -a -t {params.threads} racon3.fasta {input.reads} > {params.alg4}
+            racon {params.additional_params} {input.reads} {params.alg4} racon3.fasta > {output.polished_assembly}
+            rm racon1.fasta racon2.fasta racon3.fasta {params.alg1} {params.alg2} {params.alg3} {params.alg4}
+            
+            """
+
+    rule medaka:
+        message:
+            "Polishing assembly with Medaka using Long reads"
+        input:
+            racon_polished=os.path.join(
+                get_polishing_dir("{sample}"), "racon", "polished.fasta"
+            ),
+            reads=get_long_reads_file("{sample}"),
+        output:
+            out=os.path.join(
+                get_assembly_dir("{sample}"), "polished", "medaka", "consensus.fasta"
+            ),
+        params:
+            threads=THREADS,
+            folder=os.path.join(get_assembly_dir("{sample}"), "polished", "medaka"),
+        conda:
+            "medaka" if get_mode("medaka") == "conda" else None
+        container:
+            (
+                "docker://staphb/medaka:latest"
+                if get_mode("medaka") == "container"
+                else None
+            )
+        shell:
+            """
+            medaka_consensus -i {input.reads} -d {input.racon_polished} -o {params.folder} -t {params.threads}
+            """
+
+    rule write_config_file_nextpolish:
+        message:
+            "Writing config file for NextPolish"
+        input:
+            reads_forward=f"{ST_READS_FORWARD}",
+            reads_reverse=f"{ST_READS_REVERSE}",
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "medaka", "consensus.fasta"
+            ),
+        output:
+            config_file=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "run.cfg"
+            ),
+            sgs_fofn=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "sgs_fofn.txt"
+            ),
+        params:
+            workdir=os.path.join(get_polishing_dir("{sample}"), "nextpolish"),
+            genome_size="40M",
+            parallel_jobs=THREADS,
+            rerun=3,
+        run:
+            with open(output.config_file, "w") as f:
+                f.write("[General]\n")
+                f.write(f"job_type = local\n")
+                f.write(f"job_prefix = nextPolish\n")
+                f.write(f"task = best\n")
+                f.write(f"rewrite = yes\n")
+                f.write(f"rerun = {params.rerun}\n")
+                f.write(f"parallel_jobs = {params.parallel_jobs}\n")
+                f.write(f"genome = {input.polished_assembly}\n")
+                f.write(f"genome_size = {params.genome_size}\n")
+                f.write(f"workdir = {params.workdir}\n")
+                f.write("[sgs_option]\n")
+                f.write(f"sgs_fofn = {output.sgs_fofn}\n")
+                f.write(f"sgs_options = -max_depth 100 -bwa\n")
+            with open(output.sgs_fofn, "w") as f:
+                f.write(f"{input.reads_forward}\n")
+                f.write(f"{input.reads_reverse}\n")
+
+    rule nextpolish:
+        message:
+            "Polishing assembly with NextPolish using Short reads"
+        input:
+            config_file=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "run.cfg"
+            ),
+        output:
+            polished_assembly=os.path.join(
+                get_polishing_dir("{sample}"), "nextpolish", "genome.nextpolish.fasta"
+            ),
+        params:
+            threads=THREADS,
+        container:
+            "docker://maidem/nextpolish:latest"
+        shell:
+            """
+            nextPolish run.cfg
+            """
+
+
+##########################################################
+################### BUSCO ################################
+##########################################################
+
+
+rule busco:
+    message:
+        """
+        ====================================================
+        [BUSCO] Running BUSCO
+        --------------------------------------------
+        Input files:
+        - {input.assembly}
+        Output files:
+        - {output.busco}
+        Parameters:
+        - {params.lineage}
+        - {params.mode} 
+        - {params.outdir}
+        - {params.threads}
+        ============================================
+        """
+    input:
+        assembly=get_assembly_file("{sample}"),
+    output:
+        busco=os.path.join(
+            get_assembly_dir("{sample}"),
+            "02.Busco",
+            "BUSCO_" + os.path.basename(get_assembly_file("{sample}")),
+            "run_" + "eukaryota_odb12",
+            "short_summary.txt",
+        ),
+    params:
+        lineage="eukaryota_odb12",
+        mode="genome",
+        outdir=os.path.join(get_assembly_dir("{sample}"), "02.Busco"),
+        threads=THREADS,
+    conda:
+        "BUSCO" if get_mode("busco") == "conda" else None
+    container:
+        (
+            "docker://ezlabgva/busco:v5.8.2_cv1"
+            if get_mode("busco") == "container"
+            else None
+        )
+    shell:
+        """
+        busco -i {input.assembly} -o {params.outdir} -l {params.lineage} --mode {params.mode} --tar -c {params.threads}
+        touch {output.busco}
+        """

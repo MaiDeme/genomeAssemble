@@ -1,0 +1,43 @@
+---
+############## PATHS #########################
+working_dir: test/output/
+pod5_dir: test/RCC0000/pod5
+long_read_fastq: test/RCC0000/long_reads.fastq.gz
+short_reads_forward: test/RCC0000/sub1.fq.gz
+short_reads_reverse: test/RCC0000/sub2.fq.gz
+
+samples: 
+  - RCC00000
+
+############## GENERAL PARAMETERS ######################
+threads: 10
+############### WORLFLOW VARIATION ####################
+correcting_long_reads: "None" # dorado_correct, None
+assembler: "masurca"  # masurca, flye, nextdenovo
+use_polishing: false # false, true
+cleaning: false # false, true
+
+kraken_db: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_plusPFP-8/k2_pluspfp_08gb_20240605_db"
+taxonomy: "/mnt/storage11Tb_1/LIBRARIES/kraken2_4genomepip_standard8/new_taxdump_2024-09-01_db"
+
+############# DEPENDENCIES ########################
+execution_mode: "container" #conda/local/container
+software:
+  dorado:
+    execution_mode: "local" #conda/local/container
+  nanoplot:
+    execution_mode: "conda" #conda/local/container
+  flye:
+    execution_mode: "conda" #conda/local/container
+  masurca:
+    execution_mode: "local" #conda/local/container
+  canu:   
+    execution_mode: "local" #conda/local/container
+  racon:
+    execution_mode: "conda" #conda/local/container
+  medaka:
+    execution_mode: "conda" #conda/local/container
+  nextpolish:
+    execution_mode: "container" #local/container
+  busco:
+    execution_mode: "conda" #conda/local/container
