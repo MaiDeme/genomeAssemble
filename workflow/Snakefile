@@ -22,11 +22,6 @@ def get_mode(name):
     )
 
 
-def benchmark_file(wildcards, rule):
-    # This returns a benchmark file path based on the rule name
-    return f"benchmarks/{rule.name}.txt"
-
-
 def is_fastq_compressed(file_path):
     """
     Check if the file is gzipped.
@@ -120,12 +115,22 @@ def get_busco_output(sample):
     )
 
 
-def get_novo_binned_reads(sample):
+def get_long_novo_binned_reads(sample):
     """
     Get the binned reads from novoPlasty
     """
-    return os.path.join(get_bin_dir(sample), "novo_binned_reads.fastq.gz")
+    return os.path.join(get_bin_dir(sample), "novo_long_binned_reads.fastq.gz")
 
+def get_short_novo_binned_reads(sample):
+    """
+    Get the short binned reads from novoPlasty
+    """
+    reverse = os.path.join(get_bin_dir(sample), "novo_short_binned_reads_reverse.fastq.gz")
+    forward = os.path.join(get_bin_dir(sample), "novo_short_binned_reads_forward.fastq.gz")
+    return {
+        "forward": forward,
+        "reverse": reverse
+    }
 
 def get_binned_reads(sample):
     """
@@ -358,7 +363,8 @@ if run_binning:
 
 rule novoplastry_mito:
     input:
-        reads=get_binned_reads("{sample}"),
+        forward_reads=ST_READS_FORWARD,
+        reverse_reads=ST_READS_REVERSE,
     output:
         mito=os.path.join(
             get_bin_dir("{sample}"), "novoplastry_mt", "Contigs_1_{sample}_mt.fasta"
@@ -366,11 +372,22 @@ rule novoplastry_mito:
         config_file=os.path.join(
             get_bin_dir("{sample}"), "novoplastry_mt", "config_mt.txt"
         ),
+        hash_ = os.path.join(
+           get_bin_dir("{sample}"), "novoplastry_mt", "HASH_{sample}_mt.txt"
+        ),
+        hash_forward = os.path.join(
+            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2B_{sample}_mt.txt"
+        ),
+        hash_reverse = os.path.join(
+            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2C_{sample}_mt.txt"
+        ),
     params:
         threads=THREADS,
-        out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_mt"),
-        seed_file="/path/to/seed_file/Seed.fasta",
-        project="{sample}" + "mt",
+        out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_mt/"),
+        seed_file="/mnt/Working1Tb/Toolbox/NOVOPlasty/SeedMt.fna",
+        project="{sample}_mt",
+    log:
+        os.path.join(get_bin_dir("{sample}"), "novoplastry_mt", "novoplastry.log"),
     shell:
         """
         cat > {output.config_file} << EOF
@@ -380,7 +397,7 @@ Project:
 -----------------------
 Project name          = {params.project}
 Type                  = mito
-Genome Range          = 12000-22000
+Genome Range          = 20000-39000
 K-mer                 = 33
 Max memory            = 
 Extended log          = 0
@@ -398,9 +415,9 @@ Insert size           = 300
 Platform              = illumina
 Single/Paired         = PE
 Combined reads        = 
-Forward reads         = {ST_READS_FORWARD}
-Reverse reads         = {ST_READS_REVERSE}
-Store Hash            =
+Forward reads         = {input.forward_reads}
+Reverse reads         = {input.reverse_reads}
+Store Hash            = yes
 
 Heteroplasmy:
 -----------------------
@@ -411,30 +428,40 @@ PCR-free              =
 Optional:
 -----------------------
 Insert size auto      = yes
-Use Quality Scores    = yes
+Use Quality Scores    = no
 Reduce ambigious N's  = 
 Output path           = {params.out_dir}
 EOF
 
-        NOVOPlasty4.3.1.pl -c {output.config_file}
+        perl /mnt/Working1Tb/Toolbox/NOVOPlasty/NOVOPlasty4.3.5.pl -c {output.config_file} > {log} 2>&1
 """
 
 
 rule novoplastry_chloro:
     input:
-        reads=get_binned_reads("{sample}"),
+        hash_forward = os.path.join(
+            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2B_{sample}_mt.txt"
+        ),
+        hash_reverse = os.path.join(
+            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2C_{sample}_mt.txt"
+        ),
+        hash_ = os.path.join(
+            get_bin_dir("{sample}"), "novoplastry_mt", "HASH_{sample}_mt.txt"
+        ),
     output:
         chloro=os.path.join(
             get_bin_dir("{sample}"), "novoplastry_pl", "Contigs_1_{sample}_pl.fasta"
         ),
         config_file=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_pl_", "config_pl.txt"
+            get_bin_dir("{sample}"), "novoplastry_pl", "config_pl.txt"
         ),
     params:
         threads=THREADS,
-        out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_pl"),
-        seed_file="/path/to/seed_file/Seed.fasta",
-        project="{sample}" + "pl",
+        out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_pl/"),
+        seed_file="/mnt/Working1Tb/Toolbox/NOVOPlasty/SeedPt.fna",
+        project="{sample}_pl",
+    log:
+        os.path.join(get_bin_dir("{sample}"), "novoplastry_pl", "novoplastry.log"),
     shell:
         """
         cat > {output.config_file} << EOF
@@ -444,7 +471,7 @@ Project:
 -----------------------
 Project name          = {params.project}
 Type                  = chloro
-Genome Range          = 12000-22000
+Genome Range          = 120000-200000
 K-mer                 = 33
 Max memory            = 
 Extended log          = 0
@@ -462,9 +489,9 @@ Insert size           = 300
 Platform              = illumina
 Single/Paired         = PE
 Combined reads        = 
-Forward reads         = {ST_READS_FORWARD}
-Reverse reads         = {ST_READS_REVERSE}
-Store Hash            =
+Forward reads         = {input.hash_forward}
+Reverse reads         = {input.hash_reverse}
+Store Hash            = {input.hash_}
 
 Heteroplasmy:
 -----------------------
@@ -475,12 +502,12 @@ PCR-free              =
 Optional:
 -----------------------
 Insert size auto      = yes
-Use Quality Scores    = yes
+Use Quality Scores    = no
 Reduce ambigious N's  = 
 Output path           = {params.out_dir}
 EOF
 
-        NOVOPlasty4.3.1.pl -c {output.config_file}
+        perl /mnt/Working1Tb/Toolbox/NOVOPlasty/NOVOPlasty4.3.5.pl -c {output.config_file} > {log} 2>&1
 """
 
 
@@ -502,23 +529,52 @@ rule merge_plastid_mito:
         """
 
 
-rule mapping_plastid_mito:
+rule mapping_plastid_mito_long_reads:
     input:
         reads=get_binned_reads("{sample}"),
         plastid_mito=os.path.join(
             get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
         ),
     output:
-        reads=get_novo_binned_reads("{sample}"),
+        reads=get_long_novo_binned_reads("{sample}"),
+
     params:
         threads=THREADS,
         align=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.mapped.sam"
+            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito_long.mapped.sam"
+        ),
+        index=os.path.join(
+            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.mmi"
         ),
     shell:
         """
+        minimap2 -d {params.index} {input.plastid_mito}
         minimap2 -ax map-ont -t {params.threads} {input.plastid_mito} {input.reads} > {params.align} 
-        samtools view -bS -f 4 {params.align} | samtools fastq - > {output.reads}
+        samtools view -bS -f 4 {params.align} | samtools fastq - -@ {params.threads} > {output.reads}
+        #rm {params.align} {params.index}*
+        """
+
+
+rule mapping_plastid_mito_short_reads:
+    input:
+        reads_forward=ST_READS_FORWARD,
+        reads_reverse=ST_READS_REVERSE,
+        plastid_mito=os.path.join(
+            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
+        ),
+    output:
+        reads_forward = get_short_novo_binned_reads("{sample}")["forward"],
+        reads_reverse = get_short_novo_binned_reads("{sample}")["reverse"],
+    params:
+        threads=THREADS,
+        align=os.path.join(
+            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito_short.mapped.bam"
+        ),
+    shell:
+        """
+        /mnt/Working1Tb/Toolbox/bowtie2-2.5.4/bowtie2-build {input.plastid_mito} {input.plastid_mito}.btindex
+        /mnt/Working1Tb/Toolbox/bowtie2-2.5.4/bowtie2 -x {input.plastid_mito}.btindex -1 {input.reads_forward} -2 {input.reads_reverse} -p {params.threads}   samtools fastq -f 5 -@ {params.threads} {params.align} -1 {output.reads_forward} -2 {output.reads_reverse} -0 /dev/null -s /dev/null -n
+        #rm {params.align} {input.plastid_mito}.btindex*
         """
 
 
@@ -605,9 +661,9 @@ elif config["assembler"] == "masurca":
         message:
             "Creating config file for Masurca"
         input:
-            forward_reads=f"{ST_READS_FORWARD}",
-            reverse_reads=f"{ST_READS_REVERSE}",
-            raw_reads=get_novo_binned_reads("{sample}"),
+            forward_reads=get_short_novo_binned_reads("{sample}")["forward"],
+            reverse_reads=get_short_novo_binned_reads("{sample}")["reverse"],
+            raw_reads=get_long_novo_binned_reads("{sample}"),
         output:
             config_file=os.path.join(get_assembly_dir("{sample}"), "config.txt"),
             script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
