@@ -1,19 +1,35 @@
 import os
 import glob
 
+#### Directories
 WORKING_DIR = config["working_dir"]
 SAMPLES = config["samples"]
 POD5 = config.get("pod5_dir", None)
+
+BASECALL_DIR = os.path.join(WORKING_DIR, "00.Data/01.Basecalling/00.DNA/01.MinION")
+BIN_DIR = os.path.join(WORKING_DIR, "00.Data/03.Binning")
+CORRECT_DIR = os.path.join(WORKING_DIR, "00.Data/02.Correcting/00.DNA/01.MinION")
+
+#### Files
 ST_READS_FORWARD = config.get("short_reads_forward", None)
 ST_READS_REVERSE = config.get("short_reads_reverse", None)
-LONG_READS_FASTQ = config.get("long_reads_fastq", None)
-BASECALL_DIR = WORKING_DIR + "00.Data/01.Basecalling/00.DNA/01.MinION"
-BIN_DIR = WORKING_DIR + "00.Data/03.Binning/00.DNA/01.MinION"
-BINNED_READS = config.get("binned_reads", None)
-CORRECT_DIR = WORKING_DIR + "00.Data/02.Correcting/00.DNA/01.MinION"
-ASSEMBLY = WORKING_DIR + "01.Assembly/00.Genomes/01.Assembly"
+LONG_READS = config.get("long_reads", None)
+
+ASSEMBLY = os.path.join(WORKING_DIR, "01.Assembly/00.Genomes/01.Assembly")
+
 
 THREADS = config.get("threads", 2)
+
+stop_assembly = config.get("stop_assembly", False)
+
+def files_exist(*paths):
+    """Check if file exists"""
+    if not paths or all(path is None for path in paths):
+        return False
+    missing_files = [path for path in paths if not os.path.exists(path)]
+    if missing_files:
+        raise FileNotFoundError(f"Missing files: {', '.join(missing_files)}")
+    return True
 
 
 def get_mode(name):
@@ -29,28 +45,6 @@ def is_fastq_compressed(file_path):
     if file_path is None:
         return True
     return file_path.endswith(".gz")
-
-
-def get_long_reads_file(sample):
-    """
-    Get the long reads file based on if basecall was done or not.
-    """
-    if run_basecalling:
-        return os.path.join(get_long_reads_dir(sample), "reads.fastq.gz")
-    else:
-        return os.path.join(
-            get_long_reads_dir(sample), os.path.basename(LONG_READS_FASTQ)
-        )
-
-
-def get_long_reads_dir(sample):
-    """
-    Get the long reads directory based on if basecall was done or not.
-    """
-    if run_basecalling:
-        return os.path.join(BASECALL_DIR, sample)
-    else:
-        return os.path.dirname(LONG_READS_FASTQ)
 
 
 def get_assembly_dir(sample):
@@ -79,24 +73,18 @@ def get_assembly_file(sample):
         raise ValueError("Invalid assembler specified in the config file.")
 
 
-def files_exist(*paths):
-    """Check if file exists"""
-    if not paths or all(path is None for path in paths):
-        return False
-    missing_files = [path for path in paths if not os.path.exists(path)]
-    if missing_files:
-        raise FileNotFoundError(f"Missing files: {', '.join(missing_files)}")
-    return True
+def get_polishing_dir(sample):
+    """
+    Get the polishing directory based on the assembler used.
+    """
+    return os.path.join(get_assembly_dir(sample), "polished")
 
 
 def get_bin_dir(sample):
     """
     Get the bin directory based on if binning was done or not.
     """
-    if run_binning:
-        return os.path.join(BIN_DIR, sample)
-    else:
-        return os.path.dirname(BINNED_READS)
+    return os.path.dirname(get_long_reads(sample, "kraken_bin"))
 
 
 def get_busco_dir(sample):
@@ -115,55 +103,190 @@ def get_busco_output(sample):
     )
 
 
-def get_long_novo_binned_reads(sample):
+def get_long_reads(sample, state=None):
     """
-    Get the binned reads from novoPlasty
-    """
-    return os.path.join(get_bin_dir(sample), "novo_long_binned_reads.fastq.gz")
-
-def get_short_novo_binned_reads(sample):
-    """
-    Get the short binned reads from novoPlasty
-    """
-    reverse = os.path.join(get_bin_dir(sample), "novo_short_binned_reads_reverse.fastq.gz")
-    forward = os.path.join(get_bin_dir(sample), "novo_short_binned_reads_forward.fastq.gz")
-    return {
-        "forward": forward,
-        "reverse": reverse
-    }
-
-def get_binned_reads(sample):
-    """
-    Get the binned reads from wf-metagenomics
+    Get the long reads file depending on the state of the pipeline.
     """
     if run_binning:
-        return os.path.join(get_bin_dir(sample), "UEuk_reads.fastq.gz")
+        if state == "kraken_bin":
+            return os.path.join(BIN_DIR, sample,"UEuk_reads.fastq.gz")
+
+        elif state == "novo_bin":
+            return os.path.join(BIN_DIR,sample, "novo_long_binned_reads.fastq.gz")
+        elif state is not None:
+            raise ValueError(
+                "Invalid state for long reads. Use 'kraken_bin', or 'novo_bin'."
+            )
+    if not is_long_reads_here:
+        return os.path.join(BASECALL_DIR, sample, "reads.fastq.gz")
     else:
-        return BINNED_READS
+        return LONG_READS
 
-
-def get_polishing_dir(sample):
+def get_assembly_command(sample):
     """
-    Get the polishing directory based on the assembler used.
+    Get the assembly command based on the assembler used.
     """
-    return os.path.join(get_assembly_dir(sample), "polished")
+    if config["assembler"] == "flye":
+        return f"flye --nano-raw {get_long_reads(sample)} -o {get_assembly_dir(sample)} -t {THREADS}"
+    elif config["assembler"] == "masurca":
+        return f"masurca {get_assembly_dir(sample)}/config.txt"
+    elif config["assembler"] == "canu":
+        return f"canu -p {get_assembly_dir(sample)} -d {get_assembly_dir(sample)} genomeSize=5m -nanopore-raw {get_long_reads(sample)} -threads {THREADS}"
+    else:
+        raise ValueError("Invalid assembler specified in the config file.")
+
+def get_short_reads(sample, state=None):
+    """Get the short reads file depending on the state of the pipeline."""
+
+    if run_binning:
+        if state == "novo_bin":
+            return {
+                "forward": os.path.join(
+                    get_bin_dir(sample), "novo_short_binned_reads_forward.fastq.gz"
+                ),
+                "reverse": os.path.join(
+                    get_bin_dir(sample), "novo_short_binned_reads_reverse.fastq.gz"
+                ),
+            }
+        elif state == "kraken_bin":
+            return {
+                "forward": os.path.join(get_bin_dir(sample), "U_1.fq.gz"),
+                "reverse": os.path.join(get_bin_dir(sample), "U_2.fq.gz"),
+            }
+        elif state is not None:
+            raise ValueError(
+                "Invalid state for short reads. Use 'novo_bin' or 'kraken_bin'."
+            )
+    return {
+        "forward": ST_READS_FORWARD,
+        "reverse": ST_READS_REVERSE,
+    }
 
 
-# Check is basecalling is needed
-run_basecalling = not files_exist(LONG_READS_FASTQ)
-run_binning = not files_exist(BINNED_READS)
+def get_long_reads_dir(sample, state=None):
+    """
+    Get the long reads directory depending on the state of the pipeline.
+    """
+    return os.path.dirname(get_long_reads(sample, state))
+
+
+is_long_reads_here = files_exist(LONG_READS)
+
+run_basecalling = not is_long_reads_here
+run_binning = config.get("binning", False)
+run_polishing = config.get("use_polishing", False)
+run_cleaning = config.get("cleaning", False)
+
+class TermColor:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    END = '\033[0m'
+
+def print_pipeline_summary():
+    """
+    Print a summary of the pipeline configuration.
+    """
+    def print_section(title):
+        print(f"\n{TermColor.BOLD}{TermColor.BLUE}{title}{TermColor.END}")
+        print(f"{TermColor.BLUE}{'-' * len(title)}{TermColor.END}")
+
+    print(f"\n{TermColor.HEADER}{'=' * 60}")
+    print("PIPELINE CONFIGURATION SUMMARY")
+    print(f"{'=' * 60}{TermColor.END}")
+
+
+    class TermColor:
+        HEADER = '\033[95m'
+        BLUE = '\033[94m'
+        CYAN = '\033[96m'
+        GREEN = '\033[92m'
+        YELLOW = '\033[93m'
+        RED = '\033[91m'
+        BOLD = '\033[1m'
+        UNDERLINE = '\033[4m'
+        END = '\033[0m'
+
+def print_pipeline_summary():
+    def print_section(title):
+        print(f"\n{TermColor.BOLD}{TermColor.BLUE}{title}{TermColor.END}")
+        print(f"{TermColor.BLUE}{'-' * len(title)}{TermColor.END}")
+
+    print(f"\n{TermColor.HEADER}{'=' * 60}")
+    print(f"PIPELINE CONFIGURATION SUMMARY")
+    print(f"{'=' * 60}{TermColor.END}")
+
+    print_section("General Configuration")
+    print(f"  Working Directory   : {TermColor.CYAN}{WORKING_DIR}{TermColor.END}")
+    print(f"  Samples            : {TermColor.CYAN}{', '.join(SAMPLES)}{TermColor.END}")
+    print(f"  Pod5 Directory     : {TermColor.CYAN}{POD5}{TermColor.END}")
+    print(f"  Threads            : {TermColor.CYAN}{THREADS}{TermColor.END}")
+
+
+    print_section("Input Files")
+    print(f"  Short Reads Forward: {TermColor.GREEN}{ST_READS_FORWARD}{TermColor.END}")
+    print(f"  Short Reads Reverse: {TermColor.GREEN}{ST_READS_REVERSE}{TermColor.END}")
+    print(f"  Long Reads         : {TermColor.GREEN}{LONG_READS}{TermColor.END}")
+
+    print_section("Pipeline Steps")
+    print(f"  Basecalling        : {TermColor.GREEN if run_basecalling else TermColor.RED}{'Enabled' if run_basecalling else 'Disabled'}{TermColor.END}")
+    print(f"  Binning            : {TermColor.GREEN if run_binning else TermColor.RED}{'Enabled' if run_binning else 'Disabled'}{TermColor.END}")
+    print(f"  Assembly           : {TermColor.GREEN if not stop_assembly else TermColor.RED}{'Paused' if stop_assembly else 'Enabled'}{TermColor.END}")
+    print(f"  Polishing          : {TermColor.GREEN if run_basecalling else TermColor.RED}{'Enabled' if run_polishing else 'Disabled'}{TermColor.END}")
+    print(f"  Cleaning           : {TermColor.GREEN if run_basecalling else TermColor.RED}{'Enabled' if run_cleaning else 'Disabled'}{TermColor.END}")
+
+    if run_basecalling:
+        print_section("Basecalling Details")
+        print(f"  Reads will be basecalled and saved in: {get_long_reads('{sample}')}")
+    else:
+        print_section("Basecalling Details")
+        print("  No basecalling will be performed.")
+
+    if run_binning:
+        print_section("Binning Details")
+        print(f"  Long reads filtered by kraken2: {TermColor.YELLOW}{get_long_reads('{sample}', 'kraken_bin')}{TermColor.END}")
+        print(f"  Long reads filtered by novoPlasty: {TermColor.YELLOW}{get_long_reads('{sample}', 'novo_bin')}{TermColor.END}")
+        print(f"  Short reads filtered by novoPlasty: {TermColor.YELLOW}{get_short_reads('{sample}', 'novo_bin')['forward']}, {get_short_reads('{sample}', 'novo_bin')['reverse']}{TermColor.END}")
+        print(f"  Short reads filtered by kraken2: {TermColor.YELLOW}{get_short_reads('{sample}', 'kraken_bin')['forward']}, {get_short_reads('{sample}', 'kraken_bin')['reverse']}{TermColor.END}")
+    else:
+        print_section("Binning Details")
+        print("  No binning will be performed.")
+
+    if stop_assembly:
+        print_section("Assembly")
+        print("  Pipeline will stop before assembly.")
+        print("  To run assembly manually, use:")
+        print(f"  {TermColor.CYAN}  {get_assembly_command('{sample}')}{TermColor.END}")
+        print(f" {TermColor.CYAN} To resume the pipeline, set 'stop_assembly' to False in the config file and move the assembly file to:{TermColor.END}")
+        print(f"    {TermColor.GREEN}{get_assembly_file('{sample}')}{TermColor.END}")
+    else:
+        print_section("Assembly")
+        print(f"  Assembly will be done with: {config['assembler']}")
+        print(f"  Assembly file will be located at: {TermColor.GREEN}{get_assembly_file('{sample}')}{TermColor.END}")
+
+    print("\n" + "=" * 60 + "\n")
+
+print_pipeline_summary()
 
 
 rule all:
     input:
-        expand(get_long_reads_dir("{sample}") + "/report/NanoStats.txt", sample=SAMPLES),
+        expand(
+            get_long_reads_dir("{sample}") + "/report/NanoStats.txt",
+            sample=SAMPLES,
+        ),
         expand(f"{BIN_DIR}/{{sample}}/report/NanoStats.txt", sample=SAMPLES)
         if run_binning
         else [],
         expand(f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta", sample=SAMPLES)
         if config["correcting_long_reads"] == "dorado_correct"
         else [],
-        expand(get_assembly_file("{sample}"), sample=SAMPLES),
+        expand(get_assembly_file("{sample}"), sample=SAMPLES) if not stop_assembly else [],
         expand(
             os.path.join(get_assembly_dir("{sample}"), "clean.done"), sample=SAMPLES
         )
@@ -175,9 +298,10 @@ rule all:
             ),
             sample=SAMPLES,
         )
-        if config["use_polishing"] == True
+        if config["use_polishing"] == True and not stop_assembly
         else [],
-        expand(get_busco_output("{sample}"), sample=SAMPLES),
+        expand(get_busco_output("{sample}"), sample=SAMPLES) if not stop_assembly else [],
+
 
 
 #########################################################
@@ -198,18 +322,16 @@ if run_basecalling:
             - {output.reads}
             Parameters:
             - {params.device}
-            - {params.file}
             ============================================
             """
         input:
             pod5=f"{POD5}",
         output:
-            reads=f"{BASECALL_DIR}/{{sample}}/reads.fastq.gz",
+            reads=get_long_reads("{sample}"),
         log:
             f"{BASECALL_DIR}/{{sample}}/dorado.log",
         params:
             device="cuda:0",
-            file=f"{BASECALL_DIR}/{{sample}}/reads.fastq",
         conda:
             "dorado.yaml" if get_mode("dorado") == "conda" else None
         container:
@@ -220,12 +342,11 @@ if run_basecalling:
             )
         shell:
             """
-            dorado basecaller sup --device {params.device} --emit-fastq {input.pod5} > {params.file} 2> {log}
-            gzip {params.file}
+            dorado basecaller sup --device {params.device} --emit-fastq {input.pod5} | gzip > {output.reads}
             """
 
 
-if not is_fastq_compressed(LONG_READS_FASTQ):
+if not is_fastq_compressed(LONG_READS):
 
     rule compress_fastq:
         message:
@@ -239,9 +360,9 @@ if not is_fastq_compressed(LONG_READS_FASTQ):
             - {output.reads}
             """
         input:
-            reads=LONG_READS_FASTQ,
+            reads=LONG_READS,
         output:
-            reads=get_long_reads_file("{sample}"),
+            reads=get_long_reads("{sample}"),
         shell:
             """
             gzip {input.reads}
@@ -266,7 +387,7 @@ rule nanoplot:
         ============================================
         """
     input:
-        reads=get_long_reads_file("{sample}"),
+        reads=get_long_reads("{sample}"),
     params:
         outdir=os.path.join(get_long_reads_dir("{sample}"), "report"),
     log:
@@ -303,15 +424,15 @@ if run_binning:
             - {output.UEuk_reads}
             Parameters:
             - {params.pipeline}
-            - {params.kraken_db}
+                - {params.kraken_db}
             - {params.taxonomy}
             ============================================        
             """
         input:
-            raw_reads=get_long_reads_file("{sample}"),
+            raw_reads=get_long_reads("{sample}"),
         output:
             UEuk_IDS=f"{BIN_DIR}/{{sample}}/UEuk_reads.IDS",
-            UEuk_reads=get_binned_reads("{sample}"),
+            UEuk_reads=get_long_reads("{sample}", "kraken_bin"),
         params:
             threads=THREADS,
             outdir=f"{BIN_DIR}/{{sample}}",
@@ -330,6 +451,227 @@ if run_binning:
             gzip {params.temp_file}
             """
 
+   
+
+
+    rule novoplastry_mito:
+        input:
+            forward_reads=ST_READS_FORWARD,
+            reverse_reads=ST_READS_REVERSE,
+        output:
+            mito=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "Contigs_1_{sample}_mt.fasta"
+            ),
+            config_file=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "config_mt.txt"
+            ),
+            hash_=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "HASH_{sample}_mt.txt"
+            ),
+            hash_forward=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "HASH2B_{sample}_mt.txt"
+            ),
+            hash_reverse=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "HASH2C_{sample}_mt.txt"
+            ),
+        params:
+            threads=THREADS,
+            out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_mt/"),
+            seed_file="/mnt/Working1Tb/Toolbox/NOVOPlasty/SeedMt.fna",
+            project="{sample}_mt",
+        log:
+            os.path.join(get_bin_dir("{sample}"), "novoplastry_mt", "novoplastry.log"),
+        shell:
+            """
+            cat > {output.config_file} << EOF
+    # Novoplastry Mitochondria configuration file
+    # Generated by Snakemake
+    Project:
+    -----------------------
+    Project name          = {params.project}
+    Type                  = mito
+    Genome Range          = 20000-39000
+    K-mer                 = 33
+    Max memory            = 
+    Extended log          = 0
+    Save assembled reads  = no
+    Seed Input            = {params.seed_file}
+    Extend seed directly  = no
+    Reference sequence    = 
+    Variance detection    = 
+    Chloroplast sequence  = 
+
+    Dataset 1:
+    -----------------------
+    Read Length           = 151
+    Insert size           = 300
+    Platform              = illumina
+    Single/Paired         = PE
+    Combined reads        = 
+    Forward reads         = {input.forward_reads}
+    Reverse reads         = {input.reverse_reads}
+    Store Hash            = yes
+
+    Heteroplasmy:
+    -----------------------
+    MAF                   = 
+    HP exclude list       = 
+    PCR-free              = 
+
+    Optional:
+    -----------------------
+    Insert size auto      = yes
+    Use Quality Scores    = no
+    Reduce ambigious N's  = 
+    Output path           = {params.out_dir}
+    EOF
+
+            perl /mnt/Working1Tb/Toolbox/NOVOPlasty/NOVOPlasty4.3.5.pl -c {output.config_file} > {log} 2>&1
+    """
+
+
+    rule novoplastry_chloro:
+        input:
+            hash_forward=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "HASH2B_{sample}_mt.txt"
+            ),
+            hash_reverse=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "HASH2C_{sample}_mt.txt"
+            ),
+            hash_=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "HASH_{sample}_mt.txt"
+            ),
+        output:
+            chloro=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_pl", "Contigs_1_{sample}_pl.fasta"
+            ),
+            config_file=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_pl", "config_pl.txt"
+            ),
+        params:
+            threads=THREADS,
+            out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_pl/"),
+            seed_file="/mnt/Working1Tb/Toolbox/NOVOPlasty/SeedPt.fna",
+            project="{sample}_pl",
+        log:
+            os.path.join(get_bin_dir("{sample}"), "novoplastry_pl", "novoplastry.log"),
+        shell:
+            """
+            cat > {output.config_file} << EOF
+    # Novoplastry Chloroplast configuration file
+    # Generated by Snakemake
+    Project:
+    -----------------------
+    Project name          = {params.project}
+    Type                  = chloro
+    Genome Range          = 120000-200000
+    K-mer                 = 33
+    Max memory            = 
+    Extended log          = 0
+    Save assembled reads  = no
+    Seed Input            = {params.seed_file}
+    Extend seed directly  = no
+    Reference sequence    = 
+    Variance detection    = 
+    Chloroplast sequence  = 
+
+    Dataset 1:
+    -----------------------
+    Read Length           = 151
+    Insert size           = 300
+    Platform              = illumina
+    Single/Paired         = PE
+    Combined reads        = 
+    Forward reads         = {input.hash_forward}
+    Reverse reads         = {input.hash_reverse}
+    Store Hash            = {input.hash_}
+
+    Heteroplasmy:
+    -----------------------
+    MAF                   = 
+    HP exclude list       = 
+    PCR-free              = 
+
+    Optional:
+    -----------------------
+    Insert size auto      = yes
+    Use Quality Scores    = no
+    Reduce ambigious N's  = 
+    Output path           = {params.out_dir}
+    EOF
+
+            perl /mnt/Working1Tb/Toolbox/NOVOPlasty/NOVOPlasty4.3.5.pl -c {output.config_file} > {log} 2>&1
+    """
+
+
+    rule merge_plastid_mito:
+        input:
+            mito=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_mt", "Contigs_1_{sample}_mt.fasta"
+            ),
+            chloro=os.path.join(
+                get_bin_dir("{sample}"), "novoplastry_pl", "Contigs_1_{sample}_pl.fasta"
+            ),
+        output:
+            merged=os.path.join(
+                get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
+            ),
+        shell:
+            """
+            cat {input.mito} {input.chloro} > {output.merged}
+            """
+
+
+    rule mapping_plastid_mito_long_reads:
+        input:
+            reads=get_long_reads("{sample}", "kraken_bin"),
+            plastid_mito=os.path.join(
+                get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
+            ),
+        output:
+            reads=get_long_reads("{sample}", "novo_bin"),
+        params:
+            threads=THREADS,
+            align=os.path.join(
+                get_bin_dir("{sample}"),
+                "plastid_mito",
+                "{sample}_plastid_mito_long.mapped.sam",
+            ),
+            index=os.path.join(
+                get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.mmi"
+            ),
+        shell:
+            """
+            minimap2 -d {params.index} {input.plastid_mito}
+            minimap2 -ax map-ont -t {params.threads} {input.plastid_mito} {input.reads} > {params.align} 
+            samtools view -bS -f 4 {params.align} | samtools fastq - -@ {params.threads} > {output.reads}
+            #rm {params.align} {params.index}*
+            """
+
+
+    rule mapping_plastid_mito_short_reads:
+        input:
+            reads_forward=ST_READS_FORWARD,
+            reads_reverse=ST_READS_REVERSE,
+            plastid_mito=os.path.join(
+                get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
+            ),
+        output:
+            reads_forward=get_short_reads("{sample}", "novo_bin")["forward"],
+            reads_reverse=get_short_reads("{sample}", "novo_bin")["reverse"],
+        params:
+            threads=THREADS,
+            align=os.path.join(
+                get_bin_dir("{sample}"),
+                "plastid_mito",
+                "{sample}_plastid_mito_short.mapped.bam",
+            ),
+        shell:
+            """
+            /mnt/Working1Tb/Toolbox/bowtie2-2.5.4/bowtie2-build {input.plastid_mito} {input.plastid_mito}.btindex
+            /mnt/Working1Tb/Toolbox/bowtie2-2.5.4/bowtie2 -x {input.plastid_mito}.btindex -1 {input.reads_forward} -2 {input.reads_reverse} -p {params.threads}   samtools fastq -f 5 -@ {params.threads} {params.align} -1 {output.reads_forward} -2 {output.reads_reverse} -0 /dev/null -s /dev/null -n
+            #rm {params.align} {input.plastid_mito}.btindex*
+            """
     rule nanoplot_postbinning:
         message:
             """
@@ -343,7 +685,7 @@ if run_binning:
             ============================================
             """
         input:
-            reads=get_binned_reads("{sample}"),
+            reads=get_long_reads("{sample}", "novo_bin"),
         params:
             outdir=f"{BIN_DIR}/{{sample}}/report",
         log:
@@ -360,222 +702,23 @@ if run_binning:
             NanoPlot --fastq {input.reads} -o {params.outdir}
             """
 
-
-rule novoplastry_mito:
-    input:
-        forward_reads=ST_READS_FORWARD,
-        reverse_reads=ST_READS_REVERSE,
-    output:
-        mito=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "Contigs_1_{sample}_mt.fasta"
-        ),
-        config_file=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "config_mt.txt"
-        ),
-        hash_ = os.path.join(
-           get_bin_dir("{sample}"), "novoplastry_mt", "HASH_{sample}_mt.txt"
-        ),
-        hash_forward = os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2B_{sample}_mt.txt"
-        ),
-        hash_reverse = os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2C_{sample}_mt.txt"
-        ),
-    params:
-        threads=THREADS,
-        out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_mt/"),
-        seed_file="/mnt/Working1Tb/Toolbox/NOVOPlasty/SeedMt.fna",
-        project="{sample}_mt",
-    log:
-        os.path.join(get_bin_dir("{sample}"), "novoplastry_mt", "novoplastry.log"),
-    shell:
-        """
-        cat > {output.config_file} << EOF
-# Novoplastry Mitochondria configuration file
-# Generated by Snakemake
-Project:
------------------------
-Project name          = {params.project}
-Type                  = mito
-Genome Range          = 20000-39000
-K-mer                 = 33
-Max memory            = 
-Extended log          = 0
-Save assembled reads  = no
-Seed Input            = {params.seed_file}
-Extend seed directly  = no
-Reference sequence    = 
-Variance detection    = 
-Chloroplast sequence  = 
-
-Dataset 1:
------------------------
-Read Length           = 151
-Insert size           = 300
-Platform              = illumina
-Single/Paired         = PE
-Combined reads        = 
-Forward reads         = {input.forward_reads}
-Reverse reads         = {input.reverse_reads}
-Store Hash            = yes
-
-Heteroplasmy:
------------------------
-MAF                   = 
-HP exclude list       = 
-PCR-free              = 
-
-Optional:
------------------------
-Insert size auto      = yes
-Use Quality Scores    = no
-Reduce ambigious N's  = 
-Output path           = {params.out_dir}
-EOF
-
-        perl /mnt/Working1Tb/Toolbox/NOVOPlasty/NOVOPlasty4.3.5.pl -c {output.config_file} > {log} 2>&1
-"""
-
-
-rule novoplastry_chloro:
-    input:
-        hash_forward = os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2B_{sample}_mt.txt"
-        ),
-        hash_reverse = os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "HASH2C_{sample}_mt.txt"
-        ),
-        hash_ = os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "HASH_{sample}_mt.txt"
-        ),
-    output:
-        chloro=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_pl", "Contigs_1_{sample}_pl.fasta"
-        ),
-        config_file=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_pl", "config_pl.txt"
-        ),
-    params:
-        threads=THREADS,
-        out_dir=os.path.join(get_bin_dir("{sample}"), "novoplastry_pl/"),
-        seed_file="/mnt/Working1Tb/Toolbox/NOVOPlasty/SeedPt.fna",
-        project="{sample}_pl",
-    log:
-        os.path.join(get_bin_dir("{sample}"), "novoplastry_pl", "novoplastry.log"),
-    shell:
-        """
-        cat > {output.config_file} << EOF
-# Novoplastry Chloroplast configuration file
-# Generated by Snakemake
-Project:
------------------------
-Project name          = {params.project}
-Type                  = chloro
-Genome Range          = 120000-200000
-K-mer                 = 33
-Max memory            = 
-Extended log          = 0
-Save assembled reads  = no
-Seed Input            = {params.seed_file}
-Extend seed directly  = no
-Reference sequence    = 
-Variance detection    = 
-Chloroplast sequence  = 
-
-Dataset 1:
------------------------
-Read Length           = 151
-Insert size           = 300
-Platform              = illumina
-Single/Paired         = PE
-Combined reads        = 
-Forward reads         = {input.hash_forward}
-Reverse reads         = {input.hash_reverse}
-Store Hash            = {input.hash_}
-
-Heteroplasmy:
------------------------
-MAF                   = 
-HP exclude list       = 
-PCR-free              = 
-
-Optional:
------------------------
-Insert size auto      = yes
-Use Quality Scores    = no
-Reduce ambigious N's  = 
-Output path           = {params.out_dir}
-EOF
-
-        perl /mnt/Working1Tb/Toolbox/NOVOPlasty/NOVOPlasty4.3.5.pl -c {output.config_file} > {log} 2>&1
-"""
-
-
-rule merge_plastid_mito:
-    input:
-        mito=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_mt", "Contigs_1_{sample}_mt.fasta"
-        ),
-        chloro=os.path.join(
-            get_bin_dir("{sample}"), "novoplastry_pl", "Contigs_1_{sample}_pl.fasta"
-        ),
-    output:
-        merged=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
-        ),
-    shell:
-        """
-        cat {input.mito} {input.chloro} > {output.merged}
-        """
-
-
-rule mapping_plastid_mito_long_reads:
-    input:
-        reads=get_binned_reads("{sample}"),
-        plastid_mito=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
-        ),
-    output:
-        reads=get_long_novo_binned_reads("{sample}"),
-
-    params:
-        threads=THREADS,
-        align=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito_long.mapped.sam"
-        ),
-        index=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.mmi"
-        ),
-    shell:
-        """
-        minimap2 -d {params.index} {input.plastid_mito}
-        minimap2 -ax map-ont -t {params.threads} {input.plastid_mito} {input.reads} > {params.align} 
-        samtools view -bS -f 4 {params.align} | samtools fastq - -@ {params.threads} > {output.reads}
-        #rm {params.align} {params.index}*
-        """
-
-
-rule mapping_plastid_mito_short_reads:
-    input:
-        reads_forward=ST_READS_FORWARD,
-        reads_reverse=ST_READS_REVERSE,
-        plastid_mito=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito.fasta"
-        ),
-    output:
-        reads_forward = get_short_novo_binned_reads("{sample}")["forward"],
-        reads_reverse = get_short_novo_binned_reads("{sample}")["reverse"],
-    params:
-        threads=THREADS,
-        align=os.path.join(
-            get_bin_dir("{sample}"), "plastid_mito", "{sample}_plastid_mito_short.mapped.bam"
-        ),
-    shell:
-        """
-        /mnt/Working1Tb/Toolbox/bowtie2-2.5.4/bowtie2-build {input.plastid_mito} {input.plastid_mito}.btindex
-        /mnt/Working1Tb/Toolbox/bowtie2-2.5.4/bowtie2 -x {input.plastid_mito}.btindex -1 {input.reads_forward} -2 {input.reads_reverse} -p {params.threads}   samtools fastq -f 5 -@ {params.threads} {params.align} -1 {output.reads_forward} -2 {output.reads_reverse} -0 /dev/null -s /dev/null -n
-        #rm {params.align} {input.plastid_mito}.btindex*
-        """
+    rule bin_short_kraken:
+        input:
+            f=get_short_reads("{sample}", "novo_bin")["forward"],
+            r=get_short_reads("{sample}", "novo_bin")["reverse"],
+        output:
+            f=get_short_reads("{sample}", "kraken_bin")["forward"],
+            r=get_short_reads("{sample}", "kraken_bin")["reverse"],
+            kraken= os.path.join(get_bin_dir("{sample}"), "novo_short_binned_reads.kraken"),
+            report = os.path.join(get_bin_dir("{sample}"), "novo_short_binned_reads.report"),
+        params:
+            threads=THREADS,
+            db="/opt/kraken2_db",
+            pattern_file=os.path.join(get_bin_dir("{sample}"), "U#.fq.gz"),
+        shell:
+            """
+            kraken2 --db {params.db} --threads {params.threads} --output {output.kraken}  --report {output.report} --paired --gzip-compressed --unclassified-out {params.pattern_file} {input.f} {input.r}
+            """
 
 
 #########################################################
@@ -597,7 +740,7 @@ if config["correcting_long_reads"] == "dorado_correct":
             ==============================================
             """
         input:
-            reads=get_binned_reads("{sample}"),
+            reads=get_long_reads("{sample}", "novo_bin"),
         output:
             corrected_reads=f"{CORRECT_DIR}/{{sample}}/herro/reads.fasta",
         conda:
@@ -640,7 +783,7 @@ if config["assembler"] == "flye":
         message:
             "Assembling read with Flye"
         input:
-            raw_reads=get_binned_reads("{sample}"),
+            raw_reads=get_long_reads("{sample}","novo_bin"),
         params:
             d=get_assembly_dir("{sample}"),
             threads=THREADS,
@@ -656,14 +799,13 @@ if config["assembler"] == "flye":
             """
 
 elif config["assembler"] == "masurca":
-
     rule create_config_file:
         message:
             "Creating config file for Masurca"
         input:
-            forward_reads=get_short_novo_binned_reads("{sample}")["forward"],
-            reverse_reads=get_short_novo_binned_reads("{sample}")["reverse"],
-            raw_reads=get_long_novo_binned_reads("{sample}"),
+            forward_reads=get_short_reads("{sample}",'kraken_bin')["forward"],
+            reverse_reads=get_short_reads("{sample}",'kraken_bin')["reverse"],
+            long_reads=get_long_reads("{sample}", "novo_bin"),
         output:
             config_file=os.path.join(get_assembly_dir("{sample}"), "config.txt"),
             script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
@@ -685,7 +827,7 @@ elif config["assembler"] == "masurca":
 # Generated by Snakemake
 DATA
 PE = pa 500 50 {input.forward_reads} {input.reverse_reads}      
-NANOPORE = {input.raw_reads}
+NANOPORE = {input.long_reads}
 END
 PARAMETERS
 USE_GRID = 0
@@ -717,7 +859,7 @@ EOF
         input:
             forward_reads=f"{ST_READS_FORWARD}",
             reverse_reads=f"{ST_READS_REVERSE}",
-            raw_reads=get_novo_binned_reads("{sample}"),
+            raw_reads=get_long_reads("{sample}", "novo_bin"),
             config_file=os.path.join(get_assembly_dir("{sample}"), "config.txt"),
             script=os.path.join(get_assembly_dir("{sample}"), "assemble.sh"),
         output:
@@ -790,7 +932,7 @@ elif config["assembler"] == "canu":
         message:
             "Assembling read with Canu"
         input:
-            raw_reads=get_binned_reads("{sample}"),
+            raw_reads=get_long_reads("{sample}","novo_bin"),
         params:
             d=get_assembly_dir("{sample}"),
             threads=THREADS,
@@ -817,7 +959,7 @@ if config["use_polishing"] == True:
             "Polishing assembly with Racon using Long reads"
         input:
             assembly=get_assembly_file("{sample}"),
-            reads=get_long_reads_file("{sample}"),
+            reads=get_long_reads("{sample}"),
             polished_assembly=os.path.join(
                 get_polishing_dir("{sample}"), "racon", "polished.fasta"
             ),
@@ -861,7 +1003,7 @@ if config["use_polishing"] == True:
             racon_polished=os.path.join(
                 get_polishing_dir("{sample}"), "racon", "polished.fasta"
             ),
-            reads=get_long_reads_file("{sample}"),
+            reads=get_long_reads("{sample}"),
         output:
             out=os.path.join(
                 get_assembly_dir("{sample}"), "polished", "medaka", "consensus.fasta"
