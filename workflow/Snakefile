@@ -189,30 +189,6 @@ class TermColor:
     END = '\033[0m'
 
 def print_pipeline_summary():
-    """
-    Print a summary of the pipeline configuration.
-    """
-    def print_section(title):
-        print(f"\n{TermColor.BOLD}{TermColor.BLUE}{title}{TermColor.END}")
-        print(f"{TermColor.BLUE}{'-' * len(title)}{TermColor.END}")
-
-    print(f"\n{TermColor.HEADER}{'=' * 60}")
-    print("PIPELINE CONFIGURATION SUMMARY")
-    print(f"{'=' * 60}{TermColor.END}")
-
-
-    class TermColor:
-        HEADER = '\033[95m'
-        BLUE = '\033[94m'
-        CYAN = '\033[96m'
-        GREEN = '\033[92m'
-        YELLOW = '\033[93m'
-        RED = '\033[91m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
-        END = '\033[0m'
-
-def print_pipeline_summary():
     def print_section(title):
         print(f"\n{TermColor.BOLD}{TermColor.BLUE}{title}{TermColor.END}")
         print(f"{TermColor.BLUE}{'-' * len(title)}{TermColor.END}")
@@ -222,7 +198,7 @@ def print_pipeline_summary():
     print(f"{'=' * 60}{TermColor.END}")
 
     print_section("General Configuration")
-    print(f"  Working Directory   : {TermColor.CYAN}{WORKING_DIR}{TermColor.END}")
+    print(f"  Working Directory  : {TermColor.CYAN}{WORKING_DIR}{TermColor.END}")
     print(f"  Samples            : {TermColor.CYAN}{', '.join(SAMPLES)}{TermColor.END}")
     print(f"  Pod5 Directory     : {TermColor.CYAN}{POD5}{TermColor.END}")
     print(f"  Threads            : {TermColor.CYAN}{THREADS}{TermColor.END}")
