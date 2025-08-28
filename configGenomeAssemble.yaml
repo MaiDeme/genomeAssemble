@@ -1,0 +1,52 @@
+---
+############## PATHS #########################
+working_dir: /myresults/   # results will be printed here
+long_reads: reads.fastq.gz # long reads (.fastq, .gz)
+short_reads_forward: reads_forward.fq.gz # forward strand short reads (.fastq, .gz)
+short_reads_reverse: reads_reverse.fq.gz # reverse strand short reads (.fastq, .gz)
+
+samples: 
+  - NAME # sample name, used to name the output files (avoid - _ and spaces)
+
+############## GENERAL PARAMETERS ######################
+threads: 5 # number of threads to use
+
+
+############### WORLFLOW VARIATION ####################
+binning: true # false, true
+correcting_long_reads: false # false, true
+assembler: "masurca"  # masurca, flye
+use_polishing: false # false, true
+cleaning: false # false, true
+
+stop_assembly: true
+
+kraken_db: /LIBRARIES/kraken2_4genomepip_plusPFP-8/k2_pluspfp_08gb_20240605_db
+taxonomy: /LIBRARIES/kraken2_4genomepip_standard8/new_taxdump_2024-09-01_db
+
+kraken_db_sr: /LIBRARIES/kraken2_standardDB/
+
+odb_busco: /LIBRARIES/eukaryota_odb12
+
+############# DEPENDENCIES ########################
+
+execution_mode: "container" #conda/local/container
+software:
+  dorado:
+    execution_mode: "local" #conda/local/container
+  nanoplot:
+    execution_mode: "conda" #conda/local/container
+  flye:
+    execution_mode: "conda" #conda/local/container
+  masurca:
+    execution_mode: "conda" #conda/local/container
+  canu:   
+    execution_mode: "local" #conda/local/container
+  racon:
+    execution_mode: "conda" #conda/local/container
+  medaka:
+    execution_mode: "conda" #conda/local/container
+  nextpolish:
+    execution_mode: "container" #local/container
+  busco:
+    execution_mode: "conda" #conda/local/container
